@@ -3,9 +3,10 @@
 World Simulator — design set for the five-stage build. **Start with `../AGENTS.md`** (the rules), then
 this page (the map), then the two or three documents that own the area you are working on.
 
-Status of the whole set: **Stage 2 delivered** (2026-11-25). The world engine, renderer, worker and
-save/load are implemented; population/economy/politics begin at Stage 3. Current evidence and open
-items: [`STAGE_2_REPORT.md`](STAGE_2_REPORT.md).
+Status of the whole set: **Stage 2 delivered, Stage 2.1 hardening applied** (2026-11-25). The world
+engine, renderer, worker and save/load are implemented and hardened; population/economy/politics begin
+at Stage 3. Evidence: [`STAGE_2_REPORT.md`](STAGE_2_REPORT.md), defect ledger:
+[`STAGE_2_1_HARDENING.md`](STAGE_2_1_HARDENING.md).
 
 ## Read in this order
 
@@ -27,6 +28,7 @@ items: [`STAGE_2_REPORT.md`](STAGE_2_REPORT.md).
 | 13 | [`TECHNICAL_DECISIONS.md`](TECHNICAL_DECISIONS.md) | Each decision, its alternatives, its risk, plus verified facts and open assumptions. | disagreeing with a choice, or adding one |
 | 14 | [`SKILL_USAGE.md`](SKILL_USAGE.md) | Which game-dev skills are installed, why those, and what each one changed. | start of any implementation task |
 | 15 | [`STAGE_2_REPORT.md`](STAGE_2_REPORT.md) | What Stage 2 actually built, the acceptance matrix, CI evidence and the remaining issues. | before starting Stage 3, and for any status question |
+| 16 | [`STAGE_2_1_HARDENING.md`](STAGE_2_1_HARDENING.md) | The 13 verified defects, their root causes, fixes and regression tests, plus what was deliberately not fixed. | before changing determinism, saves, camera or markers |
 
 ## Ownership of facts (one fact, one home)
 

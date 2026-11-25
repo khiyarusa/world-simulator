@@ -9,15 +9,15 @@
  */
 import { Rng, STREAM, STREAM_IDS, createStreamStates } from '../../core/rng.ts';
 import { SimError } from '../../core/errors.ts';
-import { crc32OfU32, crcHex } from '../../core/crc32.ts';
 import { clamp, clamp01 } from '../../core/math.ts';
-import { seedToText } from '../../core/seed.ts';
 import type { Seed } from '../../core/seed.ts';
 import { fbm2, ridged2, warp2 } from './noise.ts';
 import { buildHydrology } from './hydrology.ts';
 import { BIOME_FERTILITY, BIOME_VEGETATION, BIOME_WOOD, classifyBiome } from './biomes.ts';
 import { computeWaterDistance, findSpawnSites } from './spawn.ts';
-import { PRESETS, clampHarshness, clampPeoples, clampWater, harshnessSwing, isPreset, landTargetPm, presetIdOf } from './presets.ts';
+import { PRESETS, clampHarshness, clampPeoples, clampWater, harshnessSwing, isPreset, landTargetPm } from './presets.ts';
+import { recipeHashOf } from './recipeHash.ts';
+import { validateGenerated } from './validate.ts';
 import { tierOf } from '../state/worldState.ts';
 import type { CivStore, GenerationReport, SettlementStore, WorldRecipe, WorldState } from '../state/worldState.ts';
 import { allocateCivs, allocateGrids, allocateSettlements, CAPACITY } from '../state/worldState.ts';
@@ -54,27 +54,6 @@ class Progress {
     this.done += w;
     this.fn?.(name, Math.min(99, this.done));
   }
-}
-
-/**
- * Recipe identity (D-32).
- *
- * Uses the stable numeric preset id, a domain tag, and every semantically relevant field in a fixed
- * order. It must not depend on display strings, object property order or locale: `small` and `large`
- * both have five letters, and hashing the length made them collide.
- */
-const RECIPE_HASH_DOMAIN = 0x52533131; // "RS11"
-
-export function recipeHashOf(recipe: WorldRecipe): string {
-  let crc = crc32OfU32(0, RECIPE_HASH_DOMAIN);
-  crc = crc32OfU32(crc, recipe.generatorVersion);
-  crc = crc32OfU32(crc, presetIdOf(recipe.preset));
-  crc = crc32OfU32(crc, recipe.seed.hi);
-  crc = crc32OfU32(crc, recipe.seed.lo);
-  crc = crc32OfU32(crc, recipe.water);
-  crc = crc32OfU32(crc, recipe.harshness);
-  crc = crc32OfU32(crc, recipe.peoples);
-  return crcHex(crc);
 }
 
 /** 3×3 box blur; one pass removes single-cell pits that would otherwise all become lakes. */
@@ -488,34 +467,7 @@ export function generateV1(
   return state;
 }
 
-/** Structural checks that must pass before a world may enter the game. */
-export function validateGenerated(state: WorldState): string[] {
-  const issues: string[] = [];
-  const { width, height, grids } = state;
-  if (width * height !== grids.elevation.length) issues.push('grid size mismatch');
-  if (state.settlements.count === 0) issues.push('no spawn sites');
-  if (state.settlements.count > CAPACITY.settlements) issues.push('spawn count over capacity');
-  if (state.civs.count !== state.settlements.count) issues.push('civ/band count mismatch');
-  const requested = state.recipe.peoples;
-  if (state.settlements.count < requested) issues.push(`only ${state.settlements.count}/${requested} bands placed`);
-  for (let i = 0; i < width * height; i++) {
-    if (!Number.isFinite(grids.elevation[i]!)) issues.push(`non-finite elevation at ${i}`);
-    if ((grids.biome[i] ?? 0) > 15) issues.push(`biome out of range at ${i}`);
-    if ((grids.riverId[i] ?? 0) !== 0 && (grids.elevation[i] ?? 0) < state.seaLevel) {
-      issues.push(`river below sea level at ${i}`);
-    }
-  }
-  for (let k = 0; k < state.settlements.count; k++) {
-    const x = state.settlements.x[k]!;
-    const y = state.settlements.y[k]!;
-    const i = y * width + x;
-    if ((grids.elevation[i] ?? -9999) < state.seaLevel) issues.push(`spawn ${k} in water`);
-    if ((grids.lakeId[i] ?? 0) !== 0) issues.push(`spawn ${k} on a lake`);
-  }
-  return issues;
-}
-
-/** Convenience for tests/logs. */
-export function describeRecipe(recipe: WorldRecipe): string {
-  return `${recipe.preset}/${seedToText(recipe.seed)}/w${recipe.water}/h${recipe.harshness}/p${recipe.peoples}`;
-}
+// Kept on the generator's public surface: callers and tests treat identity and validation as part of
+// creating a world, even though they live in their own modules now.
+export { recipeHashOf, describeRecipe } from './recipeHash.ts';
+export { validateGenerated } from './validate.ts';

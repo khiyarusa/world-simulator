@@ -262,6 +262,12 @@ Two caveats that must stay attached to these numbers:
 The heap budget earned its place immediately: it rejected a per-tick context allocation (~400 B/tick)
 before it could become an invisible garbage stream.
 
+Stage 2.1 added one cost that is **not yet measured** and is deliberately not claimed: a save now copies
+the whole world synchronously before compression (D-37). At Medium that copy is ~0.5 MB of typed arrays
+plus the meta JSON, and the worker is busy for its duration; the figures above predate that change.
+Measuring it is part of the device protocol (save duration on eMMC), and the CI bench does not exercise
+the save path.
+
 ## 14. Budget governance
 
 - This document is the single source of performance numbers. Code comments reference it by section.

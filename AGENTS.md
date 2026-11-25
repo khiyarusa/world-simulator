@@ -24,6 +24,7 @@ The product test for every decision: *does this make the world more causally rea
 |---|---|
 | 1 — Foundation & architecture | **complete** (design + skills) |
 | 2 — World engine & playable foundation | **implementation complete — device validation pending** (`docs/STAGE_2_REPORT.md`) |
+| 2.1 — Reliability and correctness hardening | **complete** — 13 verified defects fixed, all with regression tests (`docs/STAGE_2_1_HARDENING.md`) |
 | 3 — Living world & civilization systems | next (blocked only on the Stage 2 device protocol, or on an explicit decision to accept the gap) |
 | 4 — Player experience & content | not started |
 | 5 — Optimisation, QA, release | not started |
@@ -216,5 +217,15 @@ Do not start a stage (or any implementation) unless the task prompt explicitly s
 2. Only then start Stage 3 (population, economy, settlements, civilizations, politics, ecology,
    history) — with a save-schema bump for the new shards and the balance harness as the exit gate.
 
-Before changing anything, read `docs/STAGE_2_REPORT.md` §J: it lists the known gaps, so a future
-agent does not rediscover them as surprises.
+Before changing anything, read `docs/STAGE_2_REPORT.md` §J and `docs/STAGE_2_1_HARDENING.md` §2: they
+list the known gaps and the deliberate non-fixes, so a future agent does not rediscover them as
+surprises.
+
+Invariants established by the hardening pass — do not "simplify" them away:
+
+- `captureWorld()` contains no `await`; a save is one synchronous snapshot (D-37).
+- A generation is valid only with the complete shard set (D-36), and recovery repoints and deletes the
+  damaged generation (D-38).
+- The RNG streams are captured where generation left them (D-33); the golden fixture pins grid content,
+  not the checksum (D-34).
+- Marker geometry lives in `render/markerGeometry.ts` and is unit-tested (D-39).
