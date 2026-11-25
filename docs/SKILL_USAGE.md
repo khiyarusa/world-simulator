@@ -163,3 +163,26 @@ Full license and NOTICE: .opencode/skills/_vendor/awesome-gamedev-agent-skills/
 
 Modifications: none to file contents. Directory names normalised to lowercase-kebab skill ids for
 OpenCode discovery (`router/` → `gamedev-router/`); all other names already matched.
+
+---
+
+## 7. Stage 2 application log (implementation)
+
+Router re-run for Stage 2: engine still **PixiJS 8** (one engine), task split into
+`procedural-gen` → `pixijs-rendering` → `camera-systems` → `save-systems` →
+`performance-optimization` → `game-ui-ux`, loaded one or two at a time as the work moved, never all
+at once (router §5).
+
+| Skill | What it actually changed in the code |
+|---|---|
+| `procedural-gen` | One RNG instance per stream, derived from `(seedLo, seedHi, stream)`; per-cell randomness via a stateless `cellHash` so iteration order cannot change a world; seed sweep in CI across two fresh processes; golden-world fixture as the regression contract; a missing fixture fails the run instead of silently passing. |
+| `pixijs-rendering` | `await app.init({...})` with `app.canvas` (v8 boot), `Container({ isRenderGroup: true })` for the static world, `antialias: false` + `resolution: min(DPR, 2)` for Mali-class GPUs, `CanvasSource`/`Texture` for the baked map and procedural glyphs, pooled sprites instead of per-tile objects, `destroy({ removeView: true })` on teardown. |
+| `camera-systems` | `1 − exp(−rate·dt)` smoothing (not a fixed lerp), clamp the **view** not the centre, focal-point-preserving pinch, view clamp after every mutation, and a DOM-free camera class so the contract is unit-tested (focal error ≤ 2 px, no empty space, frame-rate independence). |
+| `save-systems` | Save data, not objects (typed arrays + JSON meta); version stamped from v1; write as a **new generation** in one transaction instead of in place; keep the previous generation as the fallback; verify CRC before handing shards to the worker; refuse a newer schema instead of half-loading; corrupt/truncated/missing-shard tests. |
+| `performance-optimization` | Budgets first (p95 tick ≤ 3 ms, heap ≤ 1 MB/10k ticks), then a CI harness that measures them; the harness caught a real 400 B/tick allocation (a per-tick context object) which was fixed by reuse; headless numbers are explicitly labelled as CI-only, never as device performance. |
+| `game-ui-ux` | Safe-area insets on all chrome, 48 dp targets, 4.5:1 text contrast in the token set, one sheet pattern with a dismiss path, event-driven HUD updates (no polling loop reading game state), text that grows without clipping, and a creation form that states what the preview actually is. |
+| `gamedev-router` | Kept the selection minimal and re-routed on domain change; no genre skill was loaded because no catalog genre matches a world simulator. |
+
+Gaps hit in practice (unchanged from §4): no skill covers Capacitor packaging, worker protocols or
+IndexedDB mechanics; those were implemented from the official documentation and are recorded in
+`docs/TECHNICAL_DECISIONS.md` D-23…D-31.

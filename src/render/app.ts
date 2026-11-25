@@ -15,6 +15,11 @@ import type { BakedTerrain } from './terrainBake.ts';
 /** World pixels per tile at zoom 1.0 (docs/UX_AND_VISUAL_DIRECTION.md §1). */
 export const TILE_PX = 32;
 
+/** Marker size in screen pixels per settlement tier (camp → metropolis). */
+function markerPx(tier: number): number {
+  return [15, 19, 24, 30, 38][tier] ?? 15;
+}
+
 export interface ViewState {
   readonly zoom: number;
   readonly x: number;
@@ -46,6 +51,8 @@ export class Renderer {
   private readonly selection = new Graphics();
   private readonly textures: Texture[];
   private readonly sprites: Sprite[] = [];
+  /** Screen-space size per settlement, so a marker stays readable at every zoom (UX §9.2). */
+  private readonly basePx = new Float32Array(200);
   private readonly handlers: RendererHandlers;
   private terrain: Sprite | null = null;
   private meta: WorldMetaMsg | null = null;
@@ -138,7 +145,7 @@ export class Renderer {
       sprite.texture = this.textures[meta.settlements.tier[i] ?? 0] ?? this.textures[0]!;
       sprite.position.set(((meta.settlements.x[i] ?? 0) + 0.5) * TILE_PX, ((meta.settlements.y[i] ?? 0) + 0.5) * TILE_PX);
       sprite.tint = civColor(meta.settlements.civ[i] ?? 0);
-      sprite.scale.set(0.42);
+      this.basePx[i] = markerPx(meta.settlements.tier[i] ?? 0);
     }
     for (let i = count; i < this.sprites.length; i++) {
       const s = this.sprites[i];
@@ -160,9 +167,7 @@ export class Renderer {
       const tint = civColor(civ);
       if (sprite.tint !== tint) sprite.tint = tint;
       // Population is encoded by scale, never by number on the map (UX §9.2)
-      const pop = delta.pop[i] ?? 0;
-      const scale = pop >= 5000 ? 0.72 : pop >= 500 ? 0.58 : pop >= 60 ? 0.48 : 0.4;
-      if (Math.abs(sprite.scale.x - scale) > 0.001) sprite.scale.set(scale);
+      this.basePx[i] = markerPx(tier);
     }
     for (let i = count; i < this.sprites.length; i++) {
       const s = this.sprites[i];
@@ -181,9 +186,10 @@ export class Renderer {
     if (this.selectedId === null) return;
     const sprite = this.sprites[this.selectedId];
     if (!sprite || !sprite.visible) return;
+    const worldPerScreen = 1 / (TILE_PX * this.cam.zoom);
     this.selection
-      .circle(sprite.x, sprite.y, TILE_PX * 0.95)
-      .stroke({ width: 2.2 / Math.max(0.15, this.cam.zoom), color: 0xece5d8, alpha: 0.95 });
+      .circle(sprite.x, sprite.y, (this.basePx[this.selectedId] ?? 18) * worldPerScreen * 0.95)
+      .stroke({ width: 2 / Math.max(0.15, this.cam.zoom), color: 0xece5d8, alpha: 0.95 });
   }
 
   /**
@@ -241,7 +247,23 @@ export class Renderer {
     this.applyInertia(dt);
     this.cam.update(dt);
     this.applyTransform();
+    this.applyMarkerScale();
     if (this.cam.isSettled()) this.emitView();
+  }
+
+  /**
+   * Screenshot-constant markers: a 64 px glyph is drawn at `markerPx` screen pixels regardless of
+   * zoom, which is what keeps a settlement visible on a full-world view and unobtrusive when
+   * zoomed in.
+   */
+  private applyMarkerScale(): void {
+    const worldPerScreen = 1 / (TILE_PX * this.cam.zoom);
+    for (let i = 0; i < this.sprites.length; i++) {
+      const sprite = this.sprites[i];
+      if (!sprite || !sprite.visible) continue;
+      const scale = (this.basePx[i] ?? 18) * worldPerScreen / 64;
+      if (Math.abs(sprite.scale.x - scale) > 0.0001) sprite.scale.set(scale);
+    }
   }
 
   private applyTransform(): void {

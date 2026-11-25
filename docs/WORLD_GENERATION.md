@@ -343,3 +343,33 @@ generateWorld(recipe): GeneratedWorld {
 
 The v1 path is frozen at Stage 2 and never edited again; new behaviour ships as v2. This costs a
 module boundary and saves every existing player's world.
+
+---
+
+## 12. As implemented in v1 (Stage 2)
+
+This section records the concrete values and the places where the implementation had to choose
+something the design text left open. The generator is frozen at `generatorVersion = 1`; changing
+any number here requires a new version (see §11).
+
+| Stage | Implemented choice |
+|---|---|
+| Continent mask | radial falloff `1.12 − 0.9·r²` + domain-warped 5-octave fBm + ridged mountain mask; no multi-blob archipelago yet (P1) |
+| Sea level | solved, not guessed: a 1024-bin histogram of the height field picks the threshold that leaves exactly `landTargetPm` cells above it, so the land target is hit rather than hoped for. Measured: 450/451 ‰ (small), 400/401 ‰ (medium), 350–352 ‰ (large) |
+| Elevation | above sea → `+20 dm + 7000·(field−sea)`, below → `−40 dm + 6000·(field−sea)`, clamped to ±int16 decimetres |
+| Climate | latitude curve with the harshness slider, 0.62 °C per 100 m lapse, ±3 °C noise; moisture from upwind ocean distance minus orographic shadow minus continentality, plus a coastal bonus |
+| Hydrology | priority flood from the map edges (min-heap keyed by elevation then index), D8 steepest descent on the filled surface, accumulation by descending-elevation counting sort, river threshold 24 cells, five width tiers at 24/80/300/1200/5000, lakes = filled−real ≥ 12 dm and ≥ 8 connected cells |
+| Biomes | the 16 ids and rules in `biomes.ts`; river valley and coast are checked before climate bands so they stay visible |
+| Fertility | biome base + 45 river bonus − 14 per slope step |
+| Resources | stone above 900 dm with a noise threshold, metal above 1800 dm, timber from woodland biomass, harbour on low coastal cells |
+| Regions | 16 × 16 blocks (`floor(size/16)` tiles each), giving 256 regions on every preset |
+| Spawn | greedy by score (habitability 34 %, fertility 30 %, water 20 %, flatness 16 %, river bonus), minimum spacing `max(6, size/(peoples+2))` relaxed in four steps, final fallback deterministic |
+| Initial bands | 40–120 people each, tier from the population table, `foundedDay = 1`, 2-tile radius of claimed territory as *initial data* only |
+| Report | recipe hash (CRC32), land fraction, elevation range, biome histogram, river/lake counts, resource histogram, spawn count, validation list, warnings, attempts, timing, wind direction |
+
+### 12.1 Determinism evidence
+
+`tests/determinism/golden.test.ts` pins 15 worlds (5 seeds × 3 presets) as CRC pairs; CI runs the
+generator twice in **separate Node processes** over 40 seeds × 3 presets and compares every hash.
+All 15 golden worlds have distinct hashes, so the seed reaches the generator rather than being
+decorative.
