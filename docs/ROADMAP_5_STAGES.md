@@ -6,6 +6,10 @@ was written; it is complete when its gates are green **and** the evidence is att
 
 Numbering: `S<n>-A<m>` is referenced from PRs and stage reports.
 
+**Status (2026-11-25):** Stage 1 complete. Stage 2 **implementation complete — device validation
+pending**; see `docs/STAGE_2_REPORT.md` for the acceptance matrix and the evidence links. Stages 3–5
+have not started.
+
 ---
 
 ## Stage 1 — Foundation and architecture *(current)*
@@ -91,6 +95,9 @@ canvas non-blank → pan → zoom → screenshot), save round-trip, APK artifact
 - `S2-A8` No `Math.random`/`Date.now` in `src/sim/**` (static check green).
 
 **Exit condition:** all eight criteria demonstrated with links to workflow runs and one device capture.
+
+**Status:** implementation delivered in commit `9776301`; S2-A1/A5/A7/A8 **PASS**, S2-A3 **PASS
+(numeric)**, S2-A2/A4/A6 **PENDING DEVICE VALIDATION**. Evidence: `docs/STAGE_2_REPORT.md` §I.
 
 ---
 

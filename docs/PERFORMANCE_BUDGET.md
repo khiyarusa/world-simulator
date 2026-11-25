@@ -236,7 +236,33 @@ the stage report**, not silently skipped.
 | R6 | WebView version variance (API 24 device with old WebView) | Medium (low-end only) | feature detect `CompressionStream`; avoid new syntax at runtime (Vite targets ES2020) | any boot failure on Android 7 |
 | R7 | Save write blocking the main thread on a slow eMMC | Medium | shard writes, yield between transactions, autosave during low activity | save > 1.5 s |
 
-## 13. Budget governance
+## 13. Measured so far (CI only — not a device claim)
+
+Labels: `[VERIFIED-CI]` means measured by a GitHub Actions run and reproducible from
+`.perf/baseline.json`; it says nothing about a phone.
+
+| Metric | Stage 2 measured | Run |
+|---|---|---|
+| Day tick p50 / p95 (18,000 days, Medium) | `[VERIFIED-CI]` < 0.001 ms / < 0.001 ms | perf 45676649247 |
+| Day tick max | `[VERIFIED-CI]` 0.524 ms | perf 45676649247 |
+| Live heap growth | `[VERIFIED-CI]` +92 KB per 10k ticks (budget 1 MB) | perf 45676649247 |
+| Debug APK size | `[VERIFIED-CI]` 4.55 MB (budget 25 MB) | android 45676649292 |
+| Frame time on device | `[TARGET]` p95 ≤ 33.3 ms | **not measured** |
+| Terrain bake on device | `[TARGET]` ≤ 250 ms once per world | **not measured** |
+| Save duration on eMMC | `[TARGET]` ≤ 1.5 s | **not measured** |
+
+Two caveats that must stay attached to these numbers:
+
+1. The Stage 2 pipeline still has no per-day systems, so the tick figures certify the scheduler and
+   harness, not the game. Expect them to rise once Stage 3 lands; the budget is the ceiling, not a
+   forecast.
+2. Headless Chromium with SwiftShader proves rendering correctness, never frame rate. Any rendering
+   number must name a device and a build.
+
+The heap budget earned its place immediately: it rejected a per-tick context allocation (~400 B/tick)
+before it could become an invisible garbage stream.
+
+## 14. Budget governance
 
 - This document is the single source of performance numbers. Code comments reference it by section.
 - A PR that exceeds a budget must either fix it or update this document **with a measurement** — never

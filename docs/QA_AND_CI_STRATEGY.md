@@ -79,6 +79,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: E2E smoke
+        # served by scripts/serve-dist.mjs, a plain static server: `vite preview` timed out in CI
         run: npx playwright test --project=chromium
 
       - name: Upload traces on failure
@@ -124,7 +125,16 @@ The job fails on: tick p95 > 3.0 ms, any tick > 8 ms in a 1× steady run, heap g
 ticks, or a > 20 % regression against `.perf/baseline.json`. Baselines are updated only in a commit
 that states the reason.
 
-### 2.3 `android.yml` — the artifact
+### 2.3 `fixtures.yml` — deliberate golden regeneration
+
+`workflow_dispatch` only. Runs `npm run golden`, prints the diff and uploads `worlds.json`. It exists so
+regenerating the golden contract is an explicit, reviewable act: the PR that commits the result must
+also justify it (bump `generatorVersion` or show why existing worlds are unaffected).
+
+While the fixture does not exist, the golden test **writes it and fails** with the path, so a missing
+contract can never be mistaken for a green run.
+
+### 2.4 `android.yml` — the artifact
 
 ```yaml
 name: android

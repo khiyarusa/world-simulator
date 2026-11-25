@@ -22,16 +22,16 @@ The product test for every decision: *does this make the world more causally rea
 
 | Stage | State |
 |---|---|
-| 1 — Foundation & architecture | **complete** (design only; no code) |
-| 2 — World engine & playable foundation | next |
-| 3 — Living world & civilization systems | not started |
+| 1 — Foundation & architecture | **complete** (design + skills) |
+| 2 — World engine & playable foundation | **implementation complete — device validation pending** (`docs/STAGE_2_REPORT.md`) |
+| 3 — Living world & civilization systems | next (blocked only on the Stage 2 device protocol, or on an explicit decision to accept the gap) |
 | 4 — Player experience & content | not started |
 | 5 — Optimisation, QA, release | not started |
 
 There are exactly five stages. **There is no Stage 6.** Unfinished work is cut or explicitly reported,
 never deferred to an imaginary future stage.
 
-Do not start Stage 2 (or any implementation) unless the task prompt explicitly says to.
+Do not start a stage (or any implementation) unless the task prompt explicitly says to.
 
 ## 3. Hard rules
 
@@ -211,13 +211,10 @@ Do not start Stage 2 (or any implementation) unless the task prompt explicitly s
 
 ## 10. Current next action
 
-Stage 2, in this order (see `docs/TECHNICAL_ARCHITECTURE.md` §15):
+1. Run the device protocol in `docs/PERFORMANCE_BUDGET.md` §11 on a Galaxy A23 and record the
+   captures in the Stage 2 report (S2-A2, S2-A3, S2-A4, S2-A6).
+2. Only then start Stage 3 (population, economy, settlements, civilizations, politics, ecology,
+   history) — with a save-schema bump for the new shards and the balance harness as the exit gate.
 
-1. Project skeleton + CI green with a stub worker.
-2. `generateV1` + determinism tests + golden hashes.
-3. PixiJS boot + terrain bake + camera.
-4. Delta mirror + settlement sprites + HUD.
-5. IndexedDB save/load + autosave.
-6. Perf overlay + budgets wired into `perf.yml`.
-
-Nothing else is Stage 2.
+Before changing anything, read `docs/STAGE_2_REPORT.md` §J: it lists the known gaps, so a future
+agent does not rediscover them as surprises.

@@ -6,8 +6,11 @@ and a history is written that you can read and trace back to its causes.
 
 The world does not need you. That is the point.
 
-> **Status: Stage 1 of 5 complete — design and architecture only. No game code yet.**
-> The implementation starts at Stage 2. See [`docs/ROADMAP_5_STAGES.md`](docs/ROADMAP_5_STAGES.md).
+> **Status: Stage 2 of 5 — world engine and playable foundation implemented; device validation pending.**
+> A seeded world can be generated, inspected, panned, zoomed, time-controlled and saved on Android.
+> Simulation systems (population, economy, politics) start at Stage 3.
+> See [`docs/STAGE_2_REPORT.md`](docs/STAGE_2_REPORT.md) and
+> [`docs/ROADMAP_5_STAGES.md`](docs/ROADMAP_5_STAGES.md).
 
 ---
 
@@ -61,19 +64,22 @@ command and no buildings to place. The player observes, inspects, accelerates, a
 Runtime dependencies: **one** (`pixi.js`). The PRNG, noise, storage wrapper and UI layer are project code,
 because determinism and footprint are product requirements.
 
-## Development (from Stage 2)
+## Development
 
-The development machine for this project is intentionally weak; builds, tests and Android packaging run
-in GitHub Actions.
+The development machine for this project is intentionally weak; builds, tests and Android packaging
+run in GitHub Actions.
 
 ```bash
 npm ci
 npm run dev        # browser dev server (development only, not a product)
 npm run typecheck
-npm test
+npm test           # unit + invariants + golden worlds
+npm run det        # 40 seeds x 3 presets, two processes, compared in CI
+npm run android:sync
 ```
 
-Android artifacts are produced by CI (`.github/workflows/android.yml`), not locally.
+Android artifacts are produced by CI (`.github/workflows/android.yml`), never locally. The last green
+runs are linked from `docs/STAGE_2_REPORT.md` §H.
 
 ## Skills
 
