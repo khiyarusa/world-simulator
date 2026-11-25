@@ -144,7 +144,7 @@ describe('save generations', () => {
     const state = world();
     const base = newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small');
     const first = await commitOnce(store, base, state);
-    const doc = await commitOnce(store, first, state);
+    await commitOnce(store, first, state);
     expect(store.gensOf(WORLD_ID)).toEqual([1, 2]);
 
     // damage the current generation exactly as a bad write would

@@ -214,6 +214,12 @@ test a WebView that differs from a real device anyway. Physical-device checks (�
 - `golden`: 5 seeds × 3 presets stored as hashes. A change either keeps the hash or bumps
   `generatorVersion` and updates fixtures in a reviewed diff.
 - `long-run`: 10,000 ticks from a fixed seed; checksum compared across OS/branch where feasible.
+- `continuation`: after generate → save → load, the next 32 draws of a stream are identical to the
+  uninterrupted world, and the stored state is not the seeded state (D-33, defect H-02).
+- `identity`: preset ids and every recipe field change the recipe hash, including the `small`/`large`
+  length-collision case that used to alias (D-32, defect H-01).
+- `hydrology`: nine worlds across presets are audited for descent, cycles and terminal kinds; a
+  deliberately broken flow direction must be reported (D-35, defect H-08).
 
 ### 4.2 Save tests
 
@@ -231,6 +237,7 @@ Stage 5.
 | inspect | tap a known settlement; assert the chip and sheet show that settlement's name |
 | intervene | apply a blight; assert a `player_blight` event appears in history |
 | save/reload | save, reload the page, load the world, assert same day + same settlement count |
+| recovery | save twice, corrupt the current generation's terrain payload through the real IndexedDB, reload, assert the world recovers from the previous generation and the database is repaired |
 | layers | switch all six layers; assert no errors and the canvas changes |
 
 Playwright runs with a fixed viewport (360 × 800, DPR 2) and `hasTouch: true` for the mobile profile,

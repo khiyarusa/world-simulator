@@ -90,6 +90,9 @@ One save = a set of named shards, written in one IndexedDB transaction.
 **Shipped in schema v1 (Stage 2): four shards.** Shards for systems that do not exist yet are not
 written as empty placeholders (D-30); Stage 3 adds them with a schema bump.
 
+A generation is valid **only when all four exist** and every payload passes its CRC *and* its declared
+length. Validating whichever shards happen to be present is not validation (D-36, defect H-04).
+
 | Shard | Content | Measured / typical (Medium) |
 |---|---|---|
 | `meta` | header, version, recipe, report, RNG states, counters | ~6 KB |
@@ -152,9 +155,9 @@ fallback if a real device test shows a gap.
 
 ```
 saveWorld(worldId):
-  1. worker: verify we are at a tick boundary; capture a snapshot of state
-  2. worker: serialise shard by shard (yield between shards), computing crc32 per shard
-  3. worker → main: transfer shard buffers (no copy)
+  1. worker: captureWorld() — SYNCHRONOUS copy of every payload + checksum, between ticks
+  2. worker: encodeSnapshot() — gzip the frozen bytes (async; cannot disturb the snapshot)
+  3. worker → main: transfer shard buffers, then 'savePrepared' (serialised, NOT durable yet)
   4. main: gen = currentGen + 1
   5. main: single IDB readwrite transaction on ["shards","worlds"]:
         put all shards under (worldId, gen)
@@ -165,6 +168,9 @@ saveWorld(worldId):
 ```
 
 Crash windows, all safe:
+
+The capture must not contain an `await`: an await between shards let a tick run mid-save, producing a
+file with terrain from one day, metadata from the next and a checksum of a third (defect H-03).
 
 | Crash point | Result on next launch |
 |---|---|
@@ -185,7 +191,10 @@ loadWorld(worldId):
   3. try generation currentGen:
         read all shards in one read-only transaction
         verify count, per-shard crc32, header magic/size
-  4. on any failure: try prevGen (backup), log the failure with the failing shard name
+  4. on any failure: try prevGen (backup), logging why the candidate was rejected; a candidate must
+     have the complete shard set and matching CRCs before it is accepted
+  4b. when an older generation is accepted, repoint metadata at it and delete the damaged newer
+      generation in one transaction (D-38); otherwise the next save would record corruption as "prev"
   5. on success: run migrations schemaVersion → SAVE_VERSION (in memory)
   6. validate post-migration invariants (INV-3, INV-4, required keys, array lengths)
   7. hand shards to the worker; worker rebuilds SoA state and recomputes derived caches

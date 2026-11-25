@@ -366,10 +366,18 @@ any number here requires a new version (see §11).
 | Spawn | greedy by score (habitability 34 %, fertility 30 %, water 20 %, flatness 16 %, river bonus), minimum spacing `max(6, size/(peoples+2))` relaxed in four steps, final fallback deterministic |
 | Initial bands | 40–120 people each, tier from the population table, `foundedDay = 1`, 2-tile radius of claimed territory as *initial data* only |
 | Report | recipe hash (CRC32), land fraction, elevation range, biome histogram, river/lake counts, resource histogram, spawn count, validation list, warnings, attempts, timing, wind direction |
+| Recipe identity | stable numeric preset ids + domain tag + every recipe field, in a frozen order (D-32). Never derived from a display string. |
+| RNG continuation | the TERRAIN and SPAWN streams are stored **where generation left them**, not reseeded (D-33). |
+| Hydrology proof | `auditHydrology()` checks direction range, strict descent, termination and sink locality, and reports the terminal mix (D-35). |
 
 ### 12.1 Determinism evidence
 
-`tests/determinism/golden.test.ts` pins 15 worlds (5 seeds × 3 presets) as CRC pairs; CI runs the
-generator twice in **separate Node processes** over 40 seeds × 3 presets and compares every hash.
-All 15 golden worlds have distinct hashes, so the seed reaches the generator rather than being
+`tests/determinism/golden.test.ts` pins 15 worlds (5 seeds × 3 presets) by **grid content hash** and
+land fraction — the content contract, deliberately separate from the integrity contract (D-34). CI
+runs the generator twice in **separate Node processes** over 40 seeds × 3 presets and compares every
+hash. All 15 golden worlds have distinct hashes, so the seed reaches the generator rather than being
 decorative.
+
+The Stage 2.1 determinism repairs changed **state capture**, not generated content: the 15 grid hashes
+are byte-identical before and after the hardening pass, which is the evidence that generator v1 was
+not quietly redefined.

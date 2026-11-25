@@ -108,7 +108,8 @@ type Msg =
   | { t: 'eventBatch'; events: PackedEvent[]; major: PackedEvent[] }
   | { t: 'queryResult'; qid: number; data: unknown }
   | { t: 'saveShard'; sid: number; shard: SaveShard }
-  | { t: 'saveDone'; sid: number; checksum: string; bytes: number }
+  // Serialisation finished, not durability: the IndexedDB commit happens on the main thread.
+  | { t: 'savePrepared'; sid: number; checksum: string; bytes: number }
   | { t: 'notify'; level: 'info' | 'warn' | 'error'; code: string; msg: string }
   | { t: 'crashed'; code: string; msg: string; lastGoodDay: number };
 
@@ -346,6 +347,7 @@ world-simulator/
 │   │   └── serialize.ts         # shard packing + compression
 │   ├── render/
 │   │   ├── app.ts               # Application, world container, input
+│   │   ├── markerGeometry.ts    # screen-space marker maths (Pixi-free, unit tested)
 │   │   ├── camera.ts            # DOM-free camera math (unit tested)
 │   │   ├── terrainBake.ts       # 2048² bake, relief, coastline, grain
 │   │   ├── settlementSprites.ts # five procedural tier glyphs
