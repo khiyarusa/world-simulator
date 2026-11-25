@@ -437,6 +437,12 @@ export class Session implements ClientHandlers, ShellHandlers {
     return this.renderer.probePixels();
   }
 
+  /** World checksum from the worker: the only honest fingerprint of the generated world. */
+  async worldChecksum(): Promise<number> {
+    const data = await this.client.query<{ checksum: number } | null>({ kind: 'world' });
+    return data?.checksum ?? 0;
+  }
+
   /** Screen position of a settlement, for touch-driven browser tests. */
   settlementScreen(id: number): { x: number; y: number } | null {
     const meta = this.meta;

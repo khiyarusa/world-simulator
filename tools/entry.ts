@@ -84,8 +84,11 @@ function bench(): void {
   const dayTicks = Math.round(years * 360);
   const samples: number[] = [];
   let worst = 0;
-  // Warm up before measuring: the first ticks pay JIT and one-off allocations.
-  for (let i = 0; i < 200; i++) runDay(state);
+  // Warm up before measuring: the first ticks pay JIT and one-off allocations. Run with
+  // --expose-gc so the delta is live heap, not compiler metadata.
+  const gc = (globalThis as { gc?: () => void }).gc;
+  for (let i = 0; i < 2000; i++) runDay(state);
+  gc?.();
   const heapStart = process.memoryUsage().heapUsed;
   for (let i = 0; i < dayTicks; i++) {
     const t0 = performance.now();
@@ -94,6 +97,7 @@ function bench(): void {
     samples.push(dt);
     if (dt > worst) worst = dt;
   }
+  gc?.();
   const heapEnd = process.memoryUsage().heapUsed;
   samples.sort((a, b) => a - b);
   const at = (p: number): number => samples[Math.min(samples.length - 1, Math.floor(samples.length * p))] ?? 0;

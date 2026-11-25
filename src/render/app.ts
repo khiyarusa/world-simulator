@@ -197,6 +197,11 @@ export class Renderer {
    * map actually drew something (a canvas element existing is not evidence).
    */
   probePixels(): { min: number; max: number; sum: number } {
+    // Snap to the camera target first: a gesture only updates the target, and a probe taken before
+    // the next ticker frame would otherwise read the previous view.
+    this.cam.snap();
+    this.applyMarkerScale();
+    this.applyTransform();
     this.app.renderer.render(this.app.stage);
     const gl = (this.app.renderer as unknown as { gl: WebGL2RenderingContext }).gl;
     const size = 32;

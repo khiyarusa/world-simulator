@@ -11,6 +11,7 @@ export interface WsTestApi {
   state(): { day: number; settlements: number; speed: number; world: boolean; zoom: number };
   screenOf(id: number): { x: number; y: number } | null;
   probe(): { min: number; max: number; sum: number };
+  checksum(): Promise<number>;
   save(): Promise<void>;
 }
 
@@ -32,6 +33,7 @@ export async function boot(): Promise<void> {
       state: () => session.debugState(),
       screenOf: (id: number) => session.settlementScreen(id),
       probe: () => session.probe(),
+      checksum: () => session.worldChecksum(),
       save: () => session.onSave(),
     };
 

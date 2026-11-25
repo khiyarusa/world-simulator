@@ -99,7 +99,7 @@ test('controls simulation speed and persists the world across a reload', async (
 test('generates different worlds from different seeds', async ({ page }) => {
   await bootToCreation(page);
   await generateWorld(page, 'AAAA0000-00000001');
-  const first = await page.evaluate(() => window.__ws?.probe());
+  const first = await page.evaluate(() => window.__ws?.checksum());
 
   // create a second world from a different seed
   await page.locator('.dock-btn', { hasText: 'New' }).click();
@@ -107,7 +107,8 @@ test('generates different worlds from different seeds', async ({ page }) => {
   await page.locator('#seed-input').fill('BBBB0000-00000002');
   await page.locator('#create-btn').click();
   await page.waitForFunction(() => window.__ws?.state().world === true, undefined, { timeout: 90_000 });
-  const second = await page.evaluate(() => window.__ws?.probe());
+  const second = await page.evaluate(() => window.__ws?.checksum());
 
-  expect(second).not.toEqual(first);
+  expect(first).toBeGreaterThan(0);
+  expect(second).not.toBe(first);
 });

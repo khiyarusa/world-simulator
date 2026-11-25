@@ -29,7 +29,7 @@ jobs:
 
       - name: Tick benchmark (medium, 50 years, speeds 1/2/4/8)
         run: |
-          node dist-tools/tools.js bench \
+          node --expose-gc dist-tools/tools.js bench \
             --preset=medium --years=50 --speeds=1,2,4,8 > perf.json
           cat perf.json
 
