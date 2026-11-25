@@ -21,9 +21,14 @@ function bytesOf(view: Int16Array | Int8Array | Uint8Array | Uint16Array): Uint8
   return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
 }
 
-/** CRC over every persisted grid, in the frozen GRID_KEYS order. */
+/**
+ * CRC over every persisted grid, in the frozen GRID_KEYS order.
+ *
+ * Deliberately domain-free: this is the *content* hash the golden fixture pins, so it must depend only
+ * on the bytes of the world. Domain separation belongs to the integrity contract below (D-34).
+ */
 export function gridsChecksum(state: WorldState): number {
-  let crc = crc32OfU32(0, CHECKSUM_DOMAIN);
+  let crc = 0;
   for (const key of GRID_KEYS) {
     crc = crc32(bytesOf(state.grids[key]), crc);
   }
@@ -35,7 +40,7 @@ export function gridsChecksum(state: WorldState): number {
  * Called on save and by determinism tests, never per tick.
  */
 export function worldChecksum(state: WorldState): number {
-  let crc = gridsChecksum(state);
+  let crc = crc32OfU32(gridsChecksum(state), CHECKSUM_DOMAIN);
   crc = crc32OfU32(crc, state.day);
   crc = crc32OfU32(crc, state.width);
   crc = crc32OfU32(crc, state.height);

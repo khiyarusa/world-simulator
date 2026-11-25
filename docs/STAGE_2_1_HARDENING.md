@@ -80,7 +80,7 @@ Severity: **S1** data loss / silent corruption · **S2** wrong result or broken 
 | Where | `src/sim/state/checksum.ts` → `worldChecksum()` |
 | Cause | It covered grids, day, dimensions, sea level, seed and counters, but not water/harshness/peoples, preset identity or the RNG states. |
 | Effect | A save whose RNG state or slider values were corrupted produced the same checksum — the integrity check was blind exactly where continuation depends on it. |
-| Fix | Contract v2 with a domain tag: recipe identity, all four RNG words per stream, `foundedDay`, `droppedTicks`. Field order is frozen and documented. |
+| Fix | Contract v2 with a domain tag: recipe identity, all four RNG words per stream, `foundedDay`, `droppedTicks`. Field order is frozen and documented. The *content* hash (`gridsChecksum`) stays domain-free so the golden fixture keeps pinning bytes only. |
 | Test | `recipe-rng.test.ts` → "changes the world checksum when a stream position changes"; golden grid hashes prove world content did not move |
 
 ### H-08 — Hydrology was never validated (S2)
