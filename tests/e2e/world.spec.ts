@@ -35,6 +35,16 @@ test('creates a world, renders it, and inspects a settlement', async ({ page }) 
   const probe = await page.evaluate(() => window.__ws?.probe());
   expect(probe?.max ?? 0).toBeGreaterThan(probe?.min ?? 0);
 
+  // At the fit zoom the world exactly fills the view, so panning is clamped by design.
+  // Zoom in first (double tap), then the map can actually move.
+  const zoomBefore = await page.evaluate(() => window.__ws?.state().zoom ?? 0);
+  await page.mouse.dblclick(195, 420);
+  await page.waitForFunction(
+    (z) => (window.__ws?.state().zoom ?? 0) > z * 1.2,
+    zoomBefore,
+    { timeout: 10_000 },
+  );
+
   // pan: drag the map and confirm the camera actually moved via the rendered result
   const before = await page.evaluate(() => window.__ws?.probe());
   await page.mouse.move(200, 400);
