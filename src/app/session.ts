@@ -417,7 +417,7 @@ export class Session implements ClientHandlers, ShellHandlers {
   }
 
   /** Framebuffer probe for the browser smoke test. */
-  probe(): { min: number; max: number } {
+  probe(): { min: number; max: number; sum: number } {
     return this.renderer.probePixels();
   }
 

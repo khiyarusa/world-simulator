@@ -190,7 +190,7 @@ export class Renderer {
    * Read the live GL framebuffer after a render. Used by the browser smoke test to prove the
    * map actually drew something (a canvas element existing is not evidence).
    */
-  probePixels(): { min: number; max: number } {
+  probePixels(): { min: number; max: number; sum: number } {
     this.app.renderer.render(this.app.stage);
     const gl = (this.app.renderer as unknown as { gl: WebGL2RenderingContext }).gl;
     const size = 32;
@@ -200,12 +200,14 @@ export class Renderer {
     gl.readPixels(cx, cy, size, size, gl.RGBA, gl.UNSIGNED_BYTE, px);
     let min = 255;
     let max = 0;
+    let sum = 0;
     for (let i = 0; i < px.length; i += 4) {
       const v = px[i] ?? 0;
       if (v < min) min = v;
       if (v > max) max = v;
+      sum = (sum + v * 3 + (px[i + 1] ?? 0) * 5 + (px[i + 2] ?? 0) * 7) % 1_000_003;
     }
-    return { min, max };
+    return { min, max, sum };
   }
 
   // ---------------------------------------------------------------- projection

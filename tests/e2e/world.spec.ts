@@ -44,8 +44,19 @@ test('creates a world, renders it, and inspects a settlement', async ({ page }) 
   const after = await page.evaluate(() => window.__ws?.probe());
   expect(after).not.toEqual(before);
 
-  // select the first settlement through the public projection helper
-  const pos = await page.evaluate(() => window.__ws?.screenOf(0));
+  // Select a settlement that is not hidden under the HUD (the dock owns the bottom band and the
+  // top bar the top band), using the public projection helper.
+  const pos = await page.evaluate(() => {
+    const count = window.__ws?.state().settlements ?? 0;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    for (let id = 0; id < count; id++) {
+      const p = window.__ws?.screenOf(id);
+      if (!p) continue;
+      if (p.y > 140 && p.y < vh - 160 && p.x > 40 && p.x < vw - 40) return p;
+    }
+    return null;
+  });
   expect(pos).not.toBeNull();
   if (!pos) return;
   await page.mouse.click(pos.x, pos.y);

@@ -10,7 +10,7 @@ export interface WsTestApi {
   readonly ready: boolean;
   state(): { day: number; settlements: number; speed: number; world: boolean; zoom: number };
   screenOf(id: number): { x: number; y: number } | null;
-  probe(): { min: number; max: number };
+  probe(): { min: number; max: number; sum: number };
   save(): Promise<void>;
 }
 

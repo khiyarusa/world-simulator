@@ -20,7 +20,18 @@ export default defineConfig({
     deviceScaleFactor: 2,
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'], hasTouch: true, isMobile: false } },
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        hasTouch: true,
+        isMobile: false,
+        launchOptions: {
+          // Headless Chromium has no GPU: force the ANGLE/SwiftShader path so WebGL exists.
+          args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+        },
+      },
+    },
   ],
   webServer: {
     command: 'npm run preview -- --port 4173 --strictPort',
