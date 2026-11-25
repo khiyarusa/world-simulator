@@ -43,7 +43,15 @@ export interface MetaDoc {
   width: number;
   height: number;
   seaLevel: number;
-  counters: { settlementsFounded: number; ticks: number; droppedTicks: number };
+  counters: {
+    settlementsFounded: number;
+    ticks: number;
+    droppedTicks: number;
+    births?: number;
+    deaths?: number;
+    migrants?: number;
+    abandonments?: number;
+  };
   rng: RngState[];
   report: GenerationReport;
   /** Stage 3 society block (schema v2). Absent in v1 saves, which are migrated on load. */

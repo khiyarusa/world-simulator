@@ -7,7 +7,7 @@
  * steps conserve to the unit instead of drifting.
  */
 import { Rng, STREAM, STREAM_IDS } from '../../core/rng.ts';
-import type { RngState } from '../../core/rng.ts';
+import type { RngState, StreamId } from '../../core/rng.ts';
 import { mulDiv } from '../../core/math.ts';
 import { calendarOf, DAYS_PER_MONTH, DAYS_PER_YEAR } from '../../core/clock.ts';
 import type { WorldState } from '../state/worldState.ts';
@@ -47,7 +47,6 @@ export const RULE = {
 } as const;
 
 const SEASON_YIELD_PM = [150, 450, 1000, 550] as const; // winter..autumn
-const OCC = { FARMERS: 0, EXTRACTORS: 1, CRAFTERS: 2, TRADERS: 3, SOLDIERS: 4 } as const;
 
 const FLAG_RUINED = 1;
 const FLAG_STARVING = 2;
@@ -61,12 +60,12 @@ export function isAlive(world: WorldState, settlement: number): boolean {
   );
 }
 
-function streamIndex(stream: number): number {
+function streamIndex(stream: StreamId): number {
   return STREAM_IDS.indexOf(stream);
 }
 
 /** Run `fn` with a persisted stream, then store the advanced state. */
-function withRng(world: WorldState, stream: number, fn: (rng: Rng) => void): void {
+function withRng(world: WorldState, stream: StreamId, fn: (rng: Rng) => void): void {
   const index = streamIndex(stream);
   const state: RngState | undefined = world.rngStates[index];
   if (!state) return;
@@ -253,7 +252,7 @@ export function runConsumption(world: WorldState, day: number): void {
 
 // ------------------------------------------------------------------ demography (monthly)
 
-export function runDemographics(world: WorldState, day: number): void {
+export function runDemographics(world: WorldState): void {
   const soc = world.society;
   const s = world.settlements;
   const months = 12;
