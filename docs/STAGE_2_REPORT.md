@@ -181,3 +181,34 @@ extra runtime dependency (runtime dependencies: `pixi.js` only).
 Stage 3 may begin only after the device protocol is run (or the gap is explicitly accepted by the
 project owner). Nothing in this report is marked PASS without a link to a run or a test that proves
 it.
+
+---
+
+## M. Stage 2.1 hardening (reliability pass)
+
+A dedicated correctness pass followed the Stage 2 delivery. Full ledger:
+[`STAGE_2_1_HARDENING.md`](STAGE_2_1_HARDENING.md). Thirteen defects were reproduced and fixed; the
+ones that change an acceptance claim are:
+
+| Defect | Effect on this report |
+|---|---|
+| H-01 recipe hash collided (small/large) | S2-A1 now also proves preset identity, not just byte equality |
+| H-02 RNG stored at its initial position | deterministic continuation is now real; S2-A1 covers future draws, not only the current state |
+| H-03 save captured a moving state | S2-A4/A5 claims now rest on a genuinely coherent snapshot |
+| H-04 shard set not validated | S2-A5 now covers missing/duplicate/wrong-length shards, not only CRC |
+| H-05 recovery left stale metadata | S2-A5 now covers save-after-recovery and database repair |
+| H-06 markers 32× too small | rendering claim corrected and unit-tested |
+| H-07 checksum blind to RNG/recipe | integrity contract v2 |
+
+**Final status is unchanged:** `STAGE 2 IMPLEMENTATION COMPLETE — DEVICE VALIDATION PENDING`.
+All of Stage 2.1's gates are automated and green; nothing in this section required a device.
+
+Updated evidence for the matrix above: CI run
+[45699770961](https://github.com/khiyarusa/world-simulator/actions/runs/45699770961) — 81 tests,
+120-world cross-process determinism, 4/4 browser tests including real-IndexedDB corruption recovery;
+Android [45699770958](https://github.com/khiyarusa/world-simulator/actions/runs/45699770958) — APK
+4.56 MB; perf [45699770971](https://github.com/khiyarusa/world-simulator/actions/runs/45699770971) —
+budgets green.
+
+The outstanding item is still the physical-device protocol (S2-A2, S2-A3 feel, S2-A4 force-stop,
+S2-A6 install). Stage 3 has not been started.

@@ -156,7 +156,45 @@ Severity: **S1** data loss / silent corruption · **S2** wrong result or broken 
 
 ---
 
-## 3. Why these are the right fixes
+## 3. Measured evidence (CI, commit `7835d66`)
+
+Run: [ci 45699770961](https://github.com/khiyarusa/world-simulator/actions/runs/45699770961) —
+10 test files, **81 tests passed**, 120 worlds identical across two fresh processes, 4/4 browser tests.
+
+**Hydrology audit output (tool mode `hydro`, 9 worlds, 0 issues):**
+
+| Preset | Seed | River cells | Walks → sea | → lake | → sink | Cells with no downhill neighbour | Violations | Longest path |
+|---|---|---|---|---|---|---|---|---|
+| small | 1 | 385 | 78 | 34 | 106 | 168 | 0 | 17 |
+| small | 2024 | 363 | 138 | 42 | 17 | 381 | 0 | 13 |
+| small | 90210 | 312 | 110 | 20 | 34 | 494 | 0 | 14 |
+| medium | 1 | 647 | 121 | 79 | 122 | 1111 | 0 | 22 |
+| medium | 2024 | 654 | 159 | 62 | 144 | 1088 | 0 | 24 |
+| medium | 90210 | 611 | 138 | 111 | 76 | 1393 | 0 | 31 |
+| large | 1 | 638 | 176 | 66 | 97 | 4480 | 0 | 16 |
+| large | 2024 | 929 | 240 | 82 | 141 | 2434 | 0 | 19 |
+| large | 90210 | 750 | 116 | 127 | 173 | 3237 | 0 | 24 |
+
+Reading this honestly:
+
+- **Zero violations**: no invalid direction, no non-descending step, no cycle, and no sink with a lower
+  neighbour, across 9 worlds and all three presets.
+- Every river cell resolves to a terminal within ≤ 31 steps (the grid is 128–256 across, so paths are
+  short and bounded).
+- The "cells with no downhill neighbour" count is large because it includes **lake interiors**, which are
+  legitimately flat. Those are terminals of kind `LAKE` for a river walk, and `SINK` only when no lake was
+  classified. The audit separates the two, which is why it can distinguish "a river ended in a lake" from
+  "a river ended in a field".
+- Rivers do end in sinks in some worlds (e.g. small/1: 106 walks). Those are shallow flats and small
+  depressions below the lake thresholds, and the audit proves each is a local minimum. This is the
+  documented generator-v1 contract (D-35); it is not silently called "reaches the sea".
+
+**Save and recovery:** browser test 4 corrupts the *current* generation's terrain payload inside the real
+IndexedDB, reloads, and asserts the world comes back with the same settlement count, `prevGen = 0` and
+exactly one remaining generation. The in-memory store suite covers the same algorithm as unit tests
+(missing shard, duplicate shard, wrong length, bad CRC, recovery, save-after-recovery, all-damaged).
+
+## 4. Why these are the right fixes
 
 - Every fix is at the layer that owns the invariant: identity in `presets`/`recipeHashOf`, continuation
   in `snapshot`/`checksum`, validity in `saveSchema`, recovery in `saves`, geometry in
