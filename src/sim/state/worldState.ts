@@ -2,6 +2,7 @@ import type { Seed } from '../../core/seed.ts';
 import type { RngState } from '../../core/rng.ts';
 import { TERRAIN_KEYS } from '../../core/gridTypes.ts';
 import type { TerrainArrays, TerrainKey } from '../../core/gridTypes.ts';
+import type { SocietyState } from '../society/state.ts';
 
 export type Preset = 'small' | 'medium' | 'large';
 
@@ -60,6 +61,11 @@ export interface WorldCounters {
   settlementsFounded: number;
   ticks: number;
   droppedTicks: number;
+  /** Stage 3 conservation counters: births/deaths/migrants are events, not decorations. */
+  births: number;
+  deaths: number;
+  migrants: number;
+  abandonments: number;
 }
 
 export interface GenerationReport {
@@ -96,6 +102,8 @@ export interface WorldState {
   counters: WorldCounters;
   rngStates: RngState[];
   report: GenerationReport;
+  /** Stage 3 population, economy, society, ecology and history. */
+  society: SocietyState;
 }
 
 export const TIER = {

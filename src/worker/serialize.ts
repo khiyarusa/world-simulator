@@ -14,6 +14,9 @@ import { STREAM_IDS } from '../core/rng.ts';
 import type { RngState } from '../core/rng.ts';
 import type { SaveShard } from './protocol.ts';
 import { captureWorld } from './snapshot.ts';
+import { decodeSociety } from '../sim/society/codec.ts';
+import { allocateSociety } from '../sim/society/state.ts';
+import { initialiseSociety } from '../sim/society/init.ts';
 import type { WorldSnapshot } from './snapshot.ts';
 import {
   CIVS_HEADER_BYTES,
@@ -228,6 +231,16 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
 
   if (!Number.isInteger(meta.day) || meta.day < 1) throw new SimError('SAVE_CORRUPT', `bad day ${meta.day}`);
 
+  const counters = {
+    settlementsFounded: meta.counters?.settlementsFounded ?? settlements.count,
+    ticks: meta.counters?.ticks ?? 0,
+    droppedTicks: meta.counters?.droppedTicks ?? 0,
+    births: meta.counters?.births ?? 0,
+    deaths: meta.counters?.deaths ?? 0,
+    migrants: meta.counters?.migrants ?? 0,
+    abandonments: meta.counters?.abandonments ?? 0,
+  };
+
   const state: WorldState = {
     width,
     height,
@@ -237,10 +250,19 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
     settlements,
     civs,
     day: meta.day,
-    counters: meta.counters,
+    counters,
     rngStates,
     report: meta.report,
+    society: allocateSociety(),
   };
+
+  // Migration 1 → 2: a v1 save has no society block. It is initialised deterministically from the
+  // legacy population (exact cohort split), never regenerated and never randomised.
+  if (meta.schemaVersion >= 2 && meta.society !== undefined) {
+    state.society = decodeSociety(state, meta.society);
+  } else {
+    initialiseSociety(state, state.society);
+  }
 
   return { state, schemaVersion: meta.schemaVersion };
 }

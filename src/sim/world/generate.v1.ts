@@ -19,6 +19,8 @@ import { PRESETS, clampHarshness, clampPeoples, clampWater, harshnessSwing, isPr
 import { recipeHashOf } from './recipeHash.ts';
 import { validateGenerated } from './validate.ts';
 import { tierOf } from '../state/worldState.ts';
+import { allocateSociety } from '../society/state.ts';
+import { initialiseSociety } from '../society/init.ts';
 import type { CivStore, GenerationReport, SettlementStore, WorldRecipe, WorldState } from '../state/worldState.ts';
 import { allocateCivs, allocateGrids, allocateSettlements } from '../state/worldState.ts';
 
@@ -424,10 +426,12 @@ function attempt(recipe: WorldRecipe, progress: Progress): AttemptResult {
     settlements,
     civs,
     day: 1,
-    counters: { settlementsFounded: settlements.count, ticks: 0, droppedTicks: 0 },
+    counters: { settlementsFounded: settlements.count, ticks: 0, droppedTicks: 0, births: 0, deaths: 0, migrants: 0, abandonments: 0 },
     rngStates,
     report,
+    society: allocateSociety(),
   };
+  initialiseSociety(state, state.society);
 
   progress.complete('report');
   return { state, landPm };

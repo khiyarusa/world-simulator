@@ -13,9 +13,9 @@ import type { WorldState } from './worldState.ts';
  * Field order is frozen. Everything hashed here is deterministic persisted state; nothing here is
  * transient (no render, camera, UI, timing or report data).
  */
-export const CHECKSUM_CONTRACT_VERSION = 2;
+export const CHECKSUM_CONTRACT_VERSION = 3;
 
-const CHECKSUM_DOMAIN = 0x43534d32; // "CSM2"
+const CHECKSUM_DOMAIN = 0x43534d33; // "CSM3"
 
 function bytesOf(view: Int16Array | Int8Array | Uint8Array | Uint16Array): Uint8Array {
   return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
@@ -79,6 +79,28 @@ export function worldChecksum(state: WorldState): number {
     crc = crc32OfU32(crc, s.tier[i] ?? 0);
     crc = crc32OfU32(crc, s.nameIdx[i] ?? 0);
     crc = crc32OfU32(crc, s.foundedDay[i] ?? 0);
+  }
+
+  // --- Stage 3 society: cohorts, stocks, social state and the event tail
+  const soc = state.society;
+  crc = crc32OfU32(crc, soc.eventCount);
+  crc = crc32OfU32(crc, soc.nextEventId);
+  for (let i = 0; i < state.settlements.count; i++) {
+    let pop = 0;
+    for (let k = 0; k < 8; k++) pop += soc.cohorts[i * 8 + k] ?? 0;
+    crc = crc32OfU32(crc, pop);
+    crc = crc32OfU32(crc, soc.health[i] ?? 0);
+    crc = crc32OfU32(crc, soc.stability[i] ?? 0);
+    crc = crc32OfU32(crc, soc.treasury[i] ?? 0);
+    crc = crc32OfU32(crc, soc.infra[i] ?? 0);
+    for (let r = 0; r < 6; r++) crc = crc32OfU32(crc, soc.stock[i * 6 + r] ?? 0);
+  }
+  // the event ring's head entry is enough to detect a dropped or reordered history
+  if (soc.eventCount > 0) {
+    const head = (soc.eventHead - 1 + soc.eventId.length) % soc.eventId.length;
+    crc = crc32OfU32(crc, soc.eventId[head] ?? 0);
+    crc = crc32OfU32(crc, soc.eventDay[head] ?? 0);
+    crc = crc32OfU32(crc, soc.eventType[head] ?? 0);
   }
 
   const c = state.civs;

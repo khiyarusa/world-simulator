@@ -46,6 +46,8 @@ export interface MetaDoc {
   counters: { settlementsFounded: number; ticks: number; droppedTicks: number };
   rng: RngState[];
   report: GenerationReport;
+  /** Stage 3 society block (schema v2). Absent in v1 saves, which are migrated on load. */
+  society?: unknown;
 }
 
 export type { WorldRecipe };

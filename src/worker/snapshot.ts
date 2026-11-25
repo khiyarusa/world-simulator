@@ -10,6 +10,7 @@ import { crc32 } from '../core/crc32.ts';
 import { SAVE_SCHEMA_VERSION } from '../core/saveSchema.ts';
 import { seedToText } from '../core/seed.ts';
 import { worldChecksum } from '../sim/state/checksum.ts';
+import { encodeSociety } from '../sim/society/codec.ts';
 import { GRID_KEYS } from '../sim/state/worldState.ts';
 import type { WorldState } from '../sim/state/worldState.ts';
 import {
@@ -80,6 +81,7 @@ export function captureWorld(state: WorldState, schemaVersion = SAVE_SCHEMA_VERS
     counters: { ...state.counters },
     rng: state.rngStates.map((s) => ({ s0: s.s0, s1: s.s1, s2: s.s2, s3: s.s3 })),
     report: state.report,
+    society: encodeSociety(state),
   };
 
   const terrainHeader = new Uint8Array(TERRAIN_HEADER_BYTES);
