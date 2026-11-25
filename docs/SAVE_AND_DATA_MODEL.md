@@ -87,17 +87,17 @@ consume a simulation RNG stream).
 
 One save = a set of named shards, written in one IndexedDB transaction.
 
-| Shard | Content | Typical (Medium, yr 200) |
+**Shipped in schema v1 (Stage 2): four shards.** Shards for systems that do not exist yet are not
+written as empty placeholders (D-30); Stage 3 adds them with a schema bump.
+
+| Shard | Content | Measured / typical (Medium) |
 |---|---|---|
-| `meta` | header, version, recipe, report, RNG states, counters | ~4 KB |
-| `terrain` | 11 grids packed, in a fixed order with an explicit type table | ~500 KB raw → ~200 KB gzip |
-| `settlements` | SoA arrays (all fields), cohort arrays | ~30 KB → ~14 KB |
-| `civs` | civ store incl. 12×12 matrices | ~6 KB |
-| `characters` | ≤ 60 records | ~6 KB |
-| `routes` | ≤ 400 edges | ~9 KB |
-| `events` | 20k packed records (24 B each) | ~480 KB → ~120 KB |
-| `history` | chronicle entries + decade summaries | ~200 KB → ~60 KB |
-| **Total** | | **≈ 1.2 MB raw / ≈ 0.4 MB gzip** |
+| `meta` | header, version, recipe, report, RNG states, counters | ~6 KB |
+| `terrain` | 12 grids (+ river width) in a fixed order with an explicit byte table | ~520 KB raw → ~90–200 KB gzip |
+| `settlements` | initial band records (SoA arrays, `count` entries) | ~2 KB at year 1 |
+| `civs` | initial civ store (one per band) | < 1 KB |
+| *(Stage 3)* `characters`, `routes`, `events`, `history` | | budgeted, not yet written |
+| **Total v1** | | **≈ 0.55 MB raw / ≈ 0.1–0.2 MB gzip** |
 
 Budgets: Small ≤ 0.6 MB raw, Medium ≤ 1.2 MB, Large ≤ 2.0 MB, measured **after** compression.
 

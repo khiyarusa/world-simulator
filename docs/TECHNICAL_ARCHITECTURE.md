@@ -148,7 +148,7 @@ possible from a user's save plus a handful of commands.
 
 ```
                     ┌──────────── worker scheduler ────────────┐
-rAF tick (main) →   │ accumulator += min(dtReal, 250ms) × speed │
+worker timer loop →  │ accumulator += min(dtReal, 250ms) × speed │
                     │ while accumulator >= DAY_MS and n < 4:    │
                     │     tick(day++); accumulator -= DAY_MS     │
                     │ if accumulator > 30 × DAY_MS: drop excess  │
@@ -285,11 +285,11 @@ Verified 2026-11-25 against the npm registry and vendor docs. **Runtime dependen
 | `pixi.js` | ^8.23.0 | WebGL rendering | Only mature 2D WebGL renderer with a small API surface, render groups, and proven mobile performance. |
 | *dev only* | | | |
 | `vite` | ^8.3.8 | dev server + build | Worker/asset handling, tiny config, fast cold start on weak hardware. |
-| `typescript` | ^7.0.2 | type check | Native compiler: 8–12× faster full builds, which matters when CI is the only build machine. |
+| `typescript` | 6.0.3 | type check | TS 7 has no programmatic API until 7.1 and `typescript-eslint` needs the compiler API; D-26 records the fallback D-01 sanctioned. |
 | `vitest` | ^5.1.1 | unit/invariant tests | Shares Vite's transform pipeline; no second bundler. |
 | `@playwright/test` | ^1.65.1 | browser smoke + E2E | Only stack that reliably drives Chromium headless in CI, including WebGL checks. |
 | `@capacitor/cli/core/android` | ^8.6.2 | Android shell | Current stable major; `targetSdk 36`, API 24+, plain native project we own. |
-| `eslint` + `@typescript-eslint` | latest | lint | `typescript-eslint` still needs the TS 6 API (TS 7 has no programmatic API yet); install `typescript` as `npm:@typescript/typescript6` **only if** type-aware rules are enabled, per Microsoft's documented side-by-side path. Otherwise lint without type info. |
+| `eslint` + `typescript-eslint` | 10.x / 8.x | lint | TS syntax parsing needs the TS 6 API, which is why the project pins TS 6 rather than aliasing two compilers. |
 | `prettier` | latest | formatting | Opinionated, zero-config, no debate. |
 
 Rejected (with reason): React/Svelte/Vue (a 6-panel UI does not need a component framework; DOM + a
@@ -299,7 +299,9 @@ dependency), fflate (native `CompressionStream` exists in Android WebView ≥ Ch
 if a real device test fails), any physics engine (no physics), any audio library (WebAudio API is
 enough), any noise library (own integer noise is required for determinism guarantees).
 
-## 13. Directory tree (to be created in Stage 2)
+## 13. Directory tree (as built in Stage 2)
+
+Deviations from the plan are marked; every one is also recorded in `TECHNICAL_DECISIONS.md`.
 
 ```
 world-simulator/
@@ -343,21 +345,23 @@ world-simulator/
 │   │   ├── scheduler.ts         # accumulator, backlog cap, idle
 │   │   └── serialize.ts         # shard packing + compression
 │   ├── render/
-│   │   ├── app.ts               # PixiJS Application bootstrap
-│   │   ├── camera.ts            ├── terrainBake.ts   ├── layers.ts
-│   │   ├── settlements.ts       ├── routes.ts        ├── effects.ts
+│   │   ├── app.ts               # Application, world container, input
+│   │   ├── camera.ts            # DOM-free camera math (unit tested)
+│   │   ├── terrainBake.ts       # 2048² bake, relief, coastline, grain
+│   │   ├── settlementSprites.ts # five procedural tier glyphs
 │   │   └── palette.ts           # single source of colour truth
+│   │                            # no layers/routes/effects.ts yet (Stage 3/4)
 │   ├── ui/
-│   │   ├── shell.ts             # DOM mount, safe areas, orientation
-│   │   ├── hud.ts               # speed, date, layer button
-│   │   ├── panels/              # settlement · civ · economy · history · world
-│   │   ├── store.ts             # ~200-line reactive store
+│   │   ├── shell.ts             # HUD, chip, sheets, toast (364 lines)
+│   │   ├── creation.ts          # world creation form + real preview panel
+│   │   ├── labels.ts            # pooled DOM settlement labels
 │   │   └── format.ts            # numbers → text (one place)
+│   │                            # no hud.ts/panels/store.ts: D-27
 │   ├── platform/
-│   │   ├── storage.ts           # minimal IndexedDB wrapper
-│   │   ├── saves.ts             # slots, autosave, recovery
-│   │   ├── migrations.ts        # schemaVersion → schemaVersion+1
-│   │   └── device.ts            # Capacitor bridge, battery, orientation
+│   │   ├── storage.ts           # minimal IndexedDB wrapper (3 stores)
+│   │   ├── saves.ts             # generation commit, CRC verify, fallback
+│   │   └── migrations.ts        # schemaVersion → schemaVersion+1
+│   │                            # no device.ts: no plugin is used in Stage 2
 │   └── app/
 │       ├── bootstrap.ts         # wiring, error boundary
 │       ├── settings.ts

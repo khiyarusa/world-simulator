@@ -1,0 +1,95 @@
+{
+  "generatorVersion": 1,
+  "worlds": [
+    {
+      "seed": "1",
+      "preset": "small",
+      "hash": "05059a6b:ffec77a3",
+      "land": 451
+    },
+    {
+      "seed": "7",
+      "preset": "small",
+      "hash": "4603063b:a364491d",
+      "land": 451
+    },
+    {
+      "seed": "42",
+      "preset": "small",
+      "hash": "091ed202:b29631a0",
+      "land": 451
+    },
+    {
+      "seed": "1337",
+      "preset": "small",
+      "hash": "afe68caf:b81fc49e",
+      "land": 450
+    },
+    {
+      "seed": "90210",
+      "preset": "small",
+      "hash": "09fc0e8c:eea5a770",
+      "land": 451
+    },
+    {
+      "seed": "1",
+      "preset": "medium",
+      "hash": "44c520d3:c06493a2",
+      "land": 400
+    },
+    {
+      "seed": "7",
+      "preset": "medium",
+      "hash": "470232f8:142b4c2c",
+      "land": 401
+    },
+    {
+      "seed": "42",
+      "preset": "medium",
+      "hash": "3a5e1ead:a4b70bd6",
+      "land": 401
+    },
+    {
+      "seed": "1337",
+      "preset": "medium",
+      "hash": "43e728dc:f6b178f8",
+      "land": 400
+    },
+    {
+      "seed": "90210",
+      "preset": "medium",
+      "hash": "fe90b872:e1a183d8",
+      "land": 401
+    },
+    {
+      "seed": "1",
+      "preset": "large",
+      "hash": "c83542da:fee7d1b2",
+      "land": 352
+    },
+    {
+      "seed": "7",
+      "preset": "large",
+      "hash": "eeecaf66:6eff8793",
+      "land": 351
+    },
+    {
+      "seed": "42",
+      "preset": "large",
+      "hash": "3db966a4:8e4ea0ea",
+      "land": 350
+    },
+    {
+      "seed": "1337",
+      "preset": "large",
+      "hash": "c899b679:a8511e4e",
+      "land": 351
+    },
+    {
+      "seed": "90210",
+      "preset": "large",
+      "hash": "5ad42bda:9ca2f5aa",
+      "land": 351
+    }
+  ]
+}

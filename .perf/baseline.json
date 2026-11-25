@@ -1,0 +1,14 @@
+{
+  "note": "Measured on GitHub Actions ubuntu-latest for commit 06e2c90 (Stage 2 pipeline: no game systems yet). Update only with a measurement and a reason.",
+  "measuredAt": "2026-11-25",
+  "commit": "06e2c90",
+  "preset": "medium",
+  "years": 50,
+  "days": 18000,
+  "day1x": {
+    "p50": 0,
+    "p95": 0,
+    "max": 0.046
+  },
+  "heapGrowthPer10kTicks": -206560
+}

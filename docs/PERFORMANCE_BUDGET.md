@@ -112,7 +112,7 @@ Hard caps that prevent unbounded growth:
 | World generation | per stage, cancellable | ≤ 1.5 s total, progress every 8 ms |
 | Terrain detail re-bake | 4 chunks per frame | ≤ 2 ms/frame |
 | Save serialisation | per shard | ≤ 12 ms per shard, yields between shards |
-| Save write | per shard | one IDB transaction per shard |
+| Save write | per generation | **one** IDB transaction for all shards + metadata (D-25); shards are serialised one at a time before the transaction opens |
 | Crop/atlas warmup | per texture | ≤ 16 ms total on first frame after boot |
 | Event chronicle pass | one civ per month | ~12 small writes |
 | Catch-up after absence | ≤ 30 ticks, budgeted | stops early rather than dropping frames |

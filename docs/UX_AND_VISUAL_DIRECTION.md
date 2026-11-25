@@ -33,7 +33,7 @@ Projection constants:
 
 | Property | Value |
 |---|---|
-| Zoom range | 0.25× … 8× (1.0 = 1 world px per CSS px) |
+| Zoom range | `min(0.25, fitZoom)` … 8× (1.0 = 1 world px per CSS px). The floor must always allow the full world to fit on a phone (D-31). |
 | Default on world open | fit whole world, centred, padded 8% |
 | Pan | one-finger drag, 1:1 with finger, clamped to view bounds |
 | Pinch zoom | two-finger, focal-point preserved, no rotation |

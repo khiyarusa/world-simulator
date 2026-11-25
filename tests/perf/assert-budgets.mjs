@@ -35,7 +35,8 @@ if (baselineArg) {
     const baseline = JSON.parse(readFileSync(baselineArg, 'utf8'));
     const baseP95 = baseline.day1x?.p95 ?? 0;
     if (baseP95 > 0) {
-      const allowed = baseP95 * (1 + regressionPct / 100);
+      // Floor: sub-0.02 ms timings are timer noise, not a regression signal.
+      const allowed = Math.max(0.02, baseP95 * (1 + regressionPct / 100));
       if (p95 > allowed) failures.push(`tick p95 ${p95}ms regressed >${regressionPct}% over baseline ${baseP95}ms`);
       else notes.push(`p95 within ${regressionPct}% of baseline (${baseP95}ms)`);
     }
