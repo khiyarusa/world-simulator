@@ -359,3 +359,96 @@ allowed to remain unstated in a stage report.
 3. "We will see" is not a decision; it goes in §4 with an owner and a deadline.
 4. Any claim of a version number, API or policy must cite its source and date, or be labelled an
    assumption.
+
+---
+
+## 6. Stage 2 implementation decisions (added while building)
+
+These were not knowable at design time. Each one resolves a real ambiguity or records a deviation
+from the design text; the design documents named in each entry were corrected in the same commit.
+
+### D-23 — Seed transport as two 32-bit words
+
+- **Decision:** a seed is `{ lo, hi }` (`u32` each) everywhere on the wire, in memory and in a save
+  (`seedText` is the fixed-width hex form `AAAAAAAA-BBBBBBBB`).
+- **Why:** `WorldRecipe` was specified with `seed: bigint`, but `bigint` does not survive
+  `JSON.stringify` and is not structured-cloneable in every position. Two words are exact, cheap and
+  work in JSON, IndexedDB, `postMessage` and a URL.
+- **Trade-off:** callers must format/parse; `core/seed.ts` is the only place that does, and its
+  round-trip is unit-tested. The PRNG never sees the text form.
+
+### D-24 — The scheduler is a worker timer; rendering uses `requestAnimationFrame`
+
+- **Decision:** the simulation loop is a `setTimeout`-driven loop inside the worker
+  (`src/worker/sim.worker.ts` + `src/worker/scheduler.ts`). The renderer's `requestAnimationFrame`
+  (PixiJS ticker) never advances the simulation.
+- **Why:** the architecture diagram in `TECHNICAL_ARCHITECTURE.md` §6 showed `rAF` on the main thread
+  above the worker; that was a diagram shorthand and contradicted §6's own text ("the worker does not
+  use rAF"). A display-linked clock would make history depend on the device's refresh rate and on
+  whether the tab is visible — a direct violation of R-14.
+- **Trade-off:** the worker must idle explicitly (it does: `clearSchedule()` while paused) and the
+  main thread must not assume a tick per frame (it does not). Corrected in the architecture doc.
+
+### D-25 — One IndexedDB transaction per save generation
+
+- **Decision:** all shards plus the world metadata commit in a single `readwrite` transaction over
+  `['worlds','shards']`; pruning of old generations happens afterwards in its own transaction.
+- **Why:** `SAVE_AND_DATA_MODEL.md` requires atomicity; `PERFORMANCE_BUDGET.md` §5 said "one IDB
+  transaction per shard", which would allow a partially written generation to become visible. The
+  save document owns the format and wins (R-41); the perf document was corrected.
+- **Trade-off:** a large save holds the transaction open for its whole duration (~10 ms for a Medium
+  world). Acceptable; the worker has already produced every buffer before the transaction opens.
+
+### D-26 — TypeScript 6.0.3, not 7.0
+
+- **Decision:** the project compiles with `typescript@6.0.3`.
+- **Why:** D-01 anticipated this: TypeScript 7 has no programmatic API until 7.1, and the lint gate
+  uses `typescript-eslint`, which needs the compiler API. Option (a) — aliasing two compilers — adds a
+  toolchain that must be proven before it can be trusted; option (b) — TS 6 — is one line and is
+  explicitly sanctioned by D-01. The faster `tsc` is worth revisiting at 7.1.
+- **Trade-off:** slower type checks than TS 7. The CI job still finishes the full verify in a few
+  minutes, which is what matters here.
+
+### D-27 — No `ui/panels.ts` and no reactive store
+
+- **Decision:** the UI is `ui/shell.ts` (DOM + events), `ui/labels.ts` (map labels), `ui/format.ts`
+  (presentation). There is no `store.ts` and no panel framework.
+- **Why:** `TECHNICAL_ARCHITECTURE.md` listed a ~200-line reactive store as an example. With two live
+  values (day, speed) and one selection, a store would be indirection without a consumer. The shell
+  owns its DOM and receives explicit calls. R-8/R-7 favour fewer moving parts.
+- **Trade-off:** if Stage 4 grows six panels with shared state, a store may earn its place then. It is
+  a P1 refactor, not a P0.
+
+### D-28 — Terrain is structured-cloned once; deltas are transferred
+
+- **Decision:** the world's terrain grids travel to the main thread as a structured clone in one
+  `terrain` message per world; the per-delta mirror buffers are transferred and recycled.
+- **Why:** transferring terrain would detach the worker's authoritative arrays. The clone is ~0.5 MB
+  once per world load — irrelevant — while the 4 Hz delta path must stay allocation-free.
+- **Trade-off:** peak memory doubles for the grids during the message (then the worker's copy is the
+  only one the simulation owns). Bounded and measured.
+
+### D-29 — Preview generates a real Small world on demand
+
+- **Decision:** the creation screen's preview runs `generateV1` with `preset: 'small'` in the worker
+  when the player taps Preview, and discards the result. Tokens discard stale responses.
+- **Why:** a preview from a fake thumbnail would violate the product's first rule. Regenerating on
+  every slider change would block the worker; an explicit button plus a token is honest and cheap.
+- **Trade-off:** the preview is Small even when Medium is selected. Stated in the UI copy.
+
+### D-30 — Save v1 has four shards, not eight
+
+- **Decision:** `meta`, `terrain`, `settlements`, `civs`.
+- **Why:** events, history, characters and routes do not exist until Stage 3. Writing empty shards
+  would be fake data (AGENTS.md §8). The shard *scheme* is unchanged, so Stage 3 adds shards rather
+  than restructuring the save — with a schema bump, as R-23 requires.
+- **Trade-off:** a Stage 3 save adds ~700 KB of new shards; the budget already accounts for them.
+
+### D-31 — The zoom floor is the fit zoom
+
+- **Decision:** minimum zoom = `min(0.25, fitZoom)`.
+- **Why:** the design's 0.25 floor cannot show a 6144 px-wide world on a 390 px screen. Locking 0.25
+  would leave the player unable to see the world they generated. The floor still prevents zooming out
+  into empty space.
+- **Trade-off:** "0.25×" in the UX document is a nominal floor; the real floor is device- and
+  world-size-dependent. Corrected in the UX doc.

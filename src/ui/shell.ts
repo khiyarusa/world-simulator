@@ -1,27 +1,19 @@
 /**
- * DOM shell: creation screen, HUD, selection chip, bottom sheets, toast (UX doc §3–§6).
+ * DOM shell: HUD, selection chip, bottom sheets, toast, debug panel (UX doc §3–§6).
  *
- * The shell is dumb on purpose: it renders what it is told and reports gestures back. No rule,
- * no number and no formatting of game state lives here beyond presentation.
+ * The shell renders what it is told and reports gestures back. It contains no rule, no number and
+ * no game state beyond the values it is currently displaying. World creation lives in
+ * `creation.ts`; map labels live in `labels.ts`.
  */
 import type { Speed } from '../worker/protocol.ts';
 import { formatInt, tierName } from './format.ts';
-import { BIOME_COLORS, css } from '../render/palette.ts';
-import { PRESETS } from '../sim/world/presets.ts';
+import { CreationPanel, defaultCreateInput, type CreateInput } from './creation.ts';
 
-export type PresetId = 'small' | 'medium' | 'large';
-
-export interface CreateInput {
-  seedText: string;
-  preset: PresetId;
-  water: number;
-  harshness: number;
-  peoples: number;
-}
+export type { CreateInput, PresetId } from './creation.ts';
 
 export interface ShellHandlers {
   onCreate(input: CreateInput): void;
-  /** Deliberately not `onPreview`: the worker client also has a preview event with another shape. */
+  /** Named distinctly from the worker client's preview event, which has a different shape. */
   onPreviewRequest(input: CreateInput): void;
   onSpeed(speed: Speed): void;
   onSave(): void;
@@ -39,27 +31,30 @@ export interface WorldSummary {
   readonly landFraction: number;
 }
 
+export interface SettlementSheetInfo {
+  name: string;
+  civName: string;
+  tier: number;
+  population: number;
+  x: number;
+  y: number;
+  biome: string;
+  water: boolean;
+  foundedDay: number;
+}
+
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error(`missing element #${id}`);
   return node as T;
 }
 
-function randomSeedText(): string {
-  const buf = new Uint32Array(2);
-  crypto.getRandomValues(buf);
-  const hex = (v: number): string => (v >>> 0).toString(16).toUpperCase().padStart(8, '0');
-  return `${hex(buf[0] ?? 0)}-${hex(buf[1] ?? 0)}`;
-}
-
 export class Shell {
   readonly labelsHost: HTMLElement;
   private readonly handlers: ShellHandlers;
-  private readonly ui: HTMLElement;
   private readonly boot: HTMLElement;
   private readonly toastEl: HTMLElement;
   private readonly debugEl: HTMLDivElement;
-  private readonly creation: HTMLDivElement;
   private readonly topbar: HTMLDivElement;
   private readonly dateEl: HTMLElement;
   private readonly speedBtn: HTMLButtonElement;
@@ -68,10 +63,8 @@ export class Shell {
   private readonly chipMeta: HTMLElement;
   private readonly sheet: HTMLDivElement;
   private readonly sheetBody: HTMLDivElement;
-  private readonly previewCanvas: HTMLCanvasElement;
-  private readonly progressBar: HTMLElement;
+  private readonly creation: CreationPanel;
 
-  private input: CreateInput = { seedText: randomSeedText(), preset: 'medium', water: 50, harshness: 50, peoples: 6 };
   private speed: Speed = 0;
   private toastTimer: number | null = null;
   private summary: WorldSummary | null = null;
@@ -79,7 +72,7 @@ export class Shell {
 
   constructor(handlers: ShellHandlers) {
     this.handlers = handlers;
-    this.ui = el('ui');
+    const ui = el('ui');
     this.boot = el('boot');
     this.toastEl = el('toast');
     this.labelsHost = el('labels');
@@ -87,59 +80,22 @@ export class Shell {
     this.debugEl = document.createElement('div');
     this.debugEl.className = 'debug';
     this.debugEl.style.display = 'none';
-    this.ui.appendChild(this.debugEl);
+    ui.appendChild(this.debugEl);
 
     this.topbar = document.createElement('div');
     this.topbar.className = 'topbar hidden';
-    this.ui.appendChild(this.topbar);
-
     this.dateEl = document.createElement('div');
     this.dateEl.className = 'date';
     this.topbar.appendChild(this.dateEl);
-
     const spacer = document.createElement('div');
     spacer.className = 'spacer';
     this.topbar.appendChild(spacer);
+    this.topbar.appendChild(this.iconButton('Save', 'Save world', () => this.handlers.onSave()));
+    this.topbar.appendChild(this.iconButton('☰', 'World information', () => this.handlers.onWorldInfo()));
+    ui.appendChild(this.topbar);
 
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'icon-btn';
-    saveBtn.textContent = 'Save';
-    saveBtn.setAttribute('aria-label', 'Save world');
-    saveBtn.addEventListener('click', () => this.handlers.onSave());
-    this.topbar.appendChild(saveBtn);
+    ui.appendChild(this.buildDock());
 
-    const menuBtn = document.createElement('button');
-    menuBtn.className = 'icon-btn';
-    menuBtn.textContent = '☰';
-    menuBtn.setAttribute('aria-label', 'World information');
-    menuBtn.addEventListener('click', () => this.handlers.onWorldInfo());
-    this.topbar.appendChild(menuBtn);
-
-    // ---- dock
-    const dock = document.createElement('div');
-    dock.className = 'dock';
-    this.ui.appendChild(dock);
-
-    const worldBtn = document.createElement('button');
-    worldBtn.className = 'dock-btn';
-    worldBtn.innerHTML = 'World<small>info</small>';
-    worldBtn.addEventListener('click', () => this.handlers.onWorldInfo());
-    dock.appendChild(worldBtn);
-
-    this.speedBtn = document.createElement('button');
-    this.speedBtn.className = 'dock-btn speed';
-    this.speedBtn.textContent = '❚❚';
-    this.speedBtn.setAttribute('aria-label', 'Simulation speed');
-    this.speedBtn.addEventListener('click', () => this.openSpeedSheet());
-    dock.appendChild(this.speedBtn);
-
-    const newBtn = document.createElement('button');
-    newBtn.className = 'dock-btn';
-    newBtn.innerHTML = 'New<small>world</small>';
-    newBtn.addEventListener('click', () => this.showCreation());
-    dock.appendChild(newBtn);
-
-    // ---- chip
     this.chip = document.createElement('div');
     this.chip.className = 'chip';
     this.chip.hidden = true;
@@ -149,53 +105,91 @@ export class Shell {
     this.chipMeta.className = 'meta';
     this.chip.append(this.chipName, this.chipMeta);
     this.chip.addEventListener('click', () => this.handlers.onChipTap());
-    this.ui.appendChild(this.chip);
+    ui.appendChild(this.chip);
 
-    // ---- sheet
     this.sheet = document.createElement('div');
     this.sheet.className = 'sheet';
     const handle = document.createElement('div');
     handle.className = 'sheet-handle';
     this.sheetBody = document.createElement('div');
     this.sheet.append(handle, this.sheetBody);
-    this.ui.appendChild(this.sheet);
+    ui.appendChild(this.sheet);
 
-    // ---- creation
-    this.creation = this.buildCreation();
-    this.ui.appendChild(this.creation);
-    this.previewCanvas = el<HTMLCanvasElement>('preview-canvas');
-    this.progressBar = el('progress-bar');
+    this.creation = new CreationPanel(
+      {
+        onCreate: (input) => this.handlers.onCreate(input),
+        onPreviewRequest: (input) => this.handlers.onPreviewRequest(input),
+      },
+      defaultCreateInput(),
+    );
+    ui.appendChild(this.creation.root);
+
+    this.speedBtn = el<HTMLButtonElement>('speed-btn');
   }
 
-  // ------------------------------------------------------------------ boot / flow
+  private buildDock(): HTMLElement {
+    const dock = document.createElement('div');
+    dock.className = 'dock';
+
+    const world = document.createElement('button');
+    world.className = 'dock-btn';
+    world.innerHTML = 'World<small>info</small>';
+    world.addEventListener('click', () => this.handlers.onWorldInfo());
+    dock.appendChild(world);
+
+    const speed = document.createElement('button');
+    speed.className = 'dock-btn speed';
+    speed.id = 'speed-btn';
+    speed.textContent = '❚❚';
+    speed.setAttribute('aria-label', 'Simulation speed');
+    speed.addEventListener('click', () => this.openSpeedSheet());
+    dock.appendChild(speed);
+
+    const fresh = document.createElement('button');
+    fresh.className = 'dock-btn';
+    fresh.innerHTML = 'New<small>world</small>';
+    fresh.addEventListener('click', () => this.showCreation());
+    dock.appendChild(fresh);
+
+    return dock;
+  }
+
+  private iconButton(label: string, aria: string, onClick: () => void): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.className = 'icon-btn';
+    button.textContent = label;
+    button.setAttribute('aria-label', aria);
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  // ------------------------------------------------------------------ flow
 
   bootDone(): void {
     this.boot.classList.add('hidden');
   }
 
   showCreation(prefill?: Partial<CreateInput>): void {
-    if (prefill) this.input = { ...this.input, ...prefill };
-    this.creation.hidden = false;
-    this.syncCreation();
+    this.creation.show(prefill);
   }
 
   hideCreation(): void {
-    this.creation.hidden = true;
+    this.creation.hide();
   }
 
   showWorld(summary: WorldSummary): void {
     this.summary = summary;
-    this.creation.hidden = true;
+    this.creation.hide();
     this.topbar.classList.remove('hidden');
     this.bootDone();
   }
 
   setProgress(pct: number): void {
-    this.progressBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    this.creation.setProgress(pct);
   }
 
   setDate(text: string): void {
-    this.dateEl.innerHTML = `<strong>${text}</strong>`;
+    this.dateEl.textContent = text;
   }
 
   setSpeed(speed: Speed): void {
@@ -239,14 +233,19 @@ export class Shell {
       ['4×', 4],
       ['8×', 8],
     ];
-    this.openSheet('Simulation speed', 'A tick is always exactly one day.', [], options.map(([label, value]) => ({
-      label: `${label}${this.speed === value ? ' •' : ''}`,
-      onClick: () => {
-        this.handlers.onSpeed(value);
-        this.closeSheet();
-      },
-      accent: this.speed === value,
-    })));
+    this.openSheet(
+      'Simulation speed',
+      'A tick is always exactly one day.',
+      [],
+      options.map(([label, value]) => ({
+        label: `${label}${this.speed === value ? ' •' : ''}`,
+        onClick: () => {
+          this.handlers.onSpeed(value);
+          this.closeSheet();
+        },
+        accent: this.speed === value,
+      })),
+    );
   }
 
   openWorldSheet(summary: WorldSummary): void {
@@ -265,24 +264,19 @@ export class Shell {
     );
   }
 
-  openSettlementSheet(info: {
-    name: string;
-    civName: string;
-    tier: number;
-    population: number;
-    x: number;
-    y: number;
-    biome: string;
-    water: boolean;
-    foundedDay: number;
-  }): void {
-    this.openSheet(info.name, `${info.civName} · ${tierName(info.tier)}`, [
-      ['Population', formatInt(info.population)],
-      ['Founded', `Day ${formatInt(info.foundedDay)}`],
-      ['Biome', info.biome],
-      ['Terrain', info.water ? 'River / lake side' : 'Dry land'],
-      ['Position', `${info.x}, ${info.y}`],
-    ], []);
+  openSettlementSheet(info: SettlementSheetInfo): void {
+    this.openSheet(
+      info.name,
+      `${info.civName} · ${tierName(info.tier)}`,
+      [
+        ['Population', formatInt(info.population)],
+        ['Founded', `Day ${formatInt(info.foundedDay)}`],
+        ['Biome', info.biome],
+        ['Terrain', info.water ? 'River / lake side' : 'Dry land'],
+        ['Position', `${info.x}, ${info.y}`],
+      ],
+      [],
+    );
   }
 
   openSheet(
@@ -293,34 +287,34 @@ export class Shell {
   ): void {
     this.sheetBody.replaceChildren();
 
-    const h = document.createElement('h2');
-    h.textContent = title;
-    const p = document.createElement('p');
-    p.className = 'sub';
-    p.textContent = sub;
-    this.sheetBody.append(h, p);
+    const heading = document.createElement('h2');
+    heading.textContent = title;
+    const subtitle = document.createElement('p');
+    subtitle.className = 'sub';
+    subtitle.textContent = sub;
+    this.sheetBody.append(heading, subtitle);
 
     if (rows.length > 0) {
-      const dl = document.createElement('dl');
-      dl.className = 'kv';
-      for (const [k, v] of rows) {
+      const list = document.createElement('dl');
+      list.className = 'kv';
+      for (const [key, value] of rows) {
         const dt = document.createElement('dt');
-        dt.textContent = k;
+        dt.textContent = key;
         const dd = document.createElement('dd');
-        dd.textContent = v;
-        dl.append(dt, dd);
+        dd.textContent = value;
+        list.append(dt, dd);
       }
-      this.sheetBody.appendChild(dl);
+      this.sheetBody.appendChild(list);
     }
 
     const actionRow = document.createElement('div');
     actionRow.className = 'sheet-actions';
     for (const action of actions) {
-      const b = document.createElement('button');
-      b.className = action.accent ? 'btn accent' : 'btn';
-      b.textContent = action.label;
-      b.addEventListener('click', action.onClick);
-      actionRow.appendChild(b);
+      const button = document.createElement('button');
+      button.className = action.accent ? 'btn accent' : 'btn';
+      button.textContent = action.label;
+      button.addEventListener('click', action.onClick);
+      actionRow.appendChild(button);
     }
     const close = document.createElement('button');
     close.className = 'btn ghost';
@@ -353,152 +347,15 @@ export class Shell {
   }
 
   drawPreview(width: number, height: number, biome: Uint8Array, elevation: Int16Array): void {
-    const canvas = this.previewCanvas;
-    const size = 256;
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const cw = size / width;
-    const ch = size / height;
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = y * width + x;
-        const b = biome[i] ?? 0;
-        const e = elevation[i] ?? 0;
-        ctx.fillStyle = css(BIOME_COLORS[b] ?? BIOME_COLORS[8]!);
-        ctx.fillRect(x * cw, y * ch, Math.ceil(cw) + 0.5, Math.ceil(ch) + 0.5);
-        if (e > 3000) {
-          ctx.fillStyle = 'rgba(255,255,255,0.16)';
-          ctx.fillRect(x * cw, y * ch, Math.ceil(cw) + 0.5, Math.ceil(ch) + 0.5);
-        }
-      }
-    }
-  }
-
-  // ------------------------------------------------------------------ creation screen
-
-  private buildCreation(): HTMLDivElement {
-    const root = document.createElement('div');
-    root.className = 'create';
-    root.hidden = true;
-    root.innerHTML = `
-      <h1>Create a world</h1>
-      <p class="lede">A generated world of terrain, rivers and biomes. Settlements are placed from
-      real fertility, water and slope data. The same seed always produces the same world.</p>
-      <div class="field">
-        <label for="seed-input">Seed</label>
-        <div class="row">
-          <input id="seed-input" type="text" inputmode="text" autocomplete="off" spellcheck="false" />
-          <button id="seed-random" class="btn" type="button" style="flex:0 0 96px">Random</button>
-        </div>
-        <span class="hint">Format: 8 hex digits - 8 hex digits</span>
-      </div>
-      <div class="field">
-        <label>Size</label>
-        <div class="seg" id="preset-seg">
-          <button type="button" data-preset="small">Small</button>
-          <button type="button" data-preset="medium">Medium</button>
-          <button type="button" data-preset="large">Large</button>
-        </div>
-      </div>
-      <div class="field">
-        <label for="water">Water <span id="water-val" class="hint"></span></label>
-        <input id="water" type="range" min="0" max="100" step="1" />
-      </div>
-      <div class="field">
-        <label for="harsh">Harshness <span id="harsh-val" class="hint"></span></label>
-        <input id="harsh" type="range" min="0" max="100" step="1" />
-      </div>
-      <div class="field">
-        <label for="peoples">Peoples <span id="peoples-val" class="hint"></span></label>
-        <input id="peoples" type="range" min="1" max="12" step="1" />
-      </div>
-      <div class="preview" id="preview">
-        <span class="placeholder">Preview uses the real generator (small preset)</span>
-        <canvas id="preview-canvas" width="256" height="256" hidden></canvas>
-      </div>
-      <div class="progress"><i id="progress-bar"></i></div>
-      <div class="row">
-        <button id="preview-btn" class="btn" type="button">Preview</button>
-        <button id="create-btn" class="btn accent" type="button">Generate world</button>
-      </div>
-      <span class="hint" id="create-hint">Medium · 192 × 192 tiles · 6 peoples</span>
-    `;
-    return root;
-  }
-
-  private wiringDone = false;
-
-  private syncCreation(): void {
-    const seed = el<HTMLInputElement>('seed-input');
-    const water = el<HTMLInputElement>('water');
-    const harsh = el<HTMLInputElement>('harsh');
-    const peoples = el<HTMLInputElement>('peoples');
-    seed.value = this.input.seedText;
-    water.value = String(this.input.water);
-    harsh.value = String(this.input.harshness);
-    peoples.value = String(this.input.peoples);
-    this.syncLabels();
-
-    if (this.wiringDone) return;
-    this.wiringDone = true;
-
-    seed.addEventListener('input', () => {
-      this.input.seedText = seed.value.trim().toUpperCase();
-    });
-    water.addEventListener('input', () => {
-      this.input.water = Number(water.value);
-      this.syncLabels();
-    });
-    harsh.addEventListener('input', () => {
-      this.input.harshness = Number(harsh.value);
-      this.syncLabels();
-    });
-    peoples.addEventListener('input', () => {
-      this.input.peoples = Number(peoples.value);
-      this.syncLabels();
-    });
-    for (const btn of this.creation.querySelectorAll<HTMLButtonElement>('#preset-seg button')) {
-      btn.addEventListener('click', () => {
-        const preset = (btn.dataset.preset ?? 'medium') as PresetId;
-        this.input.preset = preset;
-        this.syncLabels();
-      });
-    }
-    el('seed-random').addEventListener('click', () => {
-      this.input.seedText = randomSeedText();
-      seed.value = this.input.seedText;
-    });
-    el('preview-btn').addEventListener('click', () => this.handlers.onPreviewRequest({ ...this.input }));
-    el('create-btn').addEventListener('click', () => this.handlers.onCreate({ ...this.input }));
-  }
-
-  private syncLabels(): void {
-    const presetSizes: Record<PresetId, number> = {
-      small: PRESETS.small.size,
-      medium: PRESETS.medium.size,
-      large: PRESETS.large.size,
-    };
-    for (const btn of this.creation.querySelectorAll<HTMLButtonElement>('#preset-seg button')) {
-      btn.setAttribute('aria-pressed', String(btn.dataset.preset === this.input.preset));
-    }
-    el('water-val').textContent = `${this.input.water}%`;
-    el('harsh-val').textContent = `${this.input.harshness}%`;
-    el('peoples-val').textContent = `${this.input.peoples}`;
-    el('create-hint').textContent = `${this.input.preset === 'small' ? 'Small' : this.input.preset === 'medium' ? 'Medium' : 'Large'} · ${presetSizes[this.input.preset]} × ${presetSizes[this.input.preset]} tiles · ${this.input.peoples} peoples`;
-    const canvas = el<HTMLCanvasElement>('preview-canvas');
-    if (canvas.hidden) this.progressBar.style.width = '0%';
+    this.creation.drawPreview(width, height, biome, elevation);
   }
 
   showPreview(): void {
-    el<HTMLCanvasElement>('preview-canvas').hidden = false;
-    const ph = this.creation.querySelector('.preview .placeholder');
-    if (ph) ph.remove();
+    this.creation.showPreview();
   }
 
   get currentInput(): CreateInput {
-    return { ...this.input };
+    return this.creation.currentInput;
   }
 
   get worldSummary(): WorldSummary | null {
