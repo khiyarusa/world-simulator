@@ -135,7 +135,7 @@ export function auditHydrology(
     let sp = 0;
     let cur = start;
     let steps = 0;
-    let result = TERMINAL.UNKNOWN;
+    let result: number = TERMINAL.UNKNOWN;
 
     for (;;) {
       if (memo[cur] !== 0) {

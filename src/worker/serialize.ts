@@ -18,7 +18,7 @@ import type { WorldSnapshot } from './snapshot.ts';
 import {
   CIVS_HEADER_BYTES,
   CIVS_MAGIC,
-  CIVS_RECORD_BYTES,
+  CIV_RECORD_BYTES,
   GRID_BYTES,
   SETTLEMENTS_HEADER_BYTES,
   SETTLEMENTS_MAGIC,
