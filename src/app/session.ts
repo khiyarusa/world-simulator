@@ -60,6 +60,7 @@ export class Session implements ClientHandlers, ShellHandlers {
   private previewToken = 0;
   private stats: TickStatsMsg | null = null;
   private speed: Speed = 0;
+  private speedBeforeHide: Speed = 1;
   private readonly debugEnabled = isDebugEnabled(location.search);
   private readonly frames = new FrameTimer();
   private busy = false;
@@ -241,6 +242,21 @@ export class Session implements ClientHandlers, ShellHandlers {
   }
 
   // ------------------------------------------------------------------ shell events
+
+  /**
+   * Backgrounding must stop the simulation, not just hide it: a throttled timer would otherwise
+   * accumulate a backlog the player never asked for (docs/TECHNICAL_ARCHITECTURE.md §6).
+   */
+  pauseForBackground(): void {
+    if (this.speed !== 0) {
+      this.speedBeforeHide = this.speed;
+      this.onSpeed(0);
+    }
+  }
+
+  resumeFromBackground(): void {
+    if (this.meta && this.speed === 0) this.onSpeed(this.speedBeforeHide);
+  }
 
   onSpeed(speed: Speed): void {
     this.speed = speed;

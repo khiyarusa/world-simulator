@@ -34,9 +34,13 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run preview -- --port 4173 --strictPort',
+    // A plain static server instead of `vite preview`: predictable in CI, no config reads, and it
+    // fails loudly if `dist` was not built.
+    command: 'node scripts/serve-dist.mjs 4173',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,
-    timeout: 120_000,
+    timeout: 60_000,
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
 });

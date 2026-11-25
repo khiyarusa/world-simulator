@@ -36,9 +36,14 @@ export async function boot(): Promise<void> {
     };
 
     // Save when the app is backgrounded: the WebView can be killed without another chance.
+    // Hidden = pause + save; visible = restore the previous speed. The simulation never runs
+    // against a throttled background timer.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden' && window.__ws?.state().world) {
-        void window.__ws.save();
+      if (document.visibilityState === 'hidden') {
+        session.pauseForBackground();
+        if (window.__ws?.state().world) void window.__ws.save();
+      } else {
+        session.resumeFromBackground();
       }
     });
 
