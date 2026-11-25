@@ -19,9 +19,30 @@ logs/
 # Node
 node_modules/
 dist/
+dist-tools/
 build/
+coverage/
 
-# Python
+# Test output
+test-results/
+playwright-report/
+blob-report/
+det-a.json
+det-b.json
+perf.json
+
+# Android build output (the native project itself is committed)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/build/
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Python (asset QA scripts)
 __pycache__/
 *.py[cod]
 .venv/

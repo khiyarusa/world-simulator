@@ -1,0 +1,64 @@
+name: android
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest          # 4 vCPU / 16 GB, Android SDK preinstalled
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - name: Assemble debug APK
+        run: cd android && ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: APK size budget (25 MB)
+        run: node scripts/check-apk-size.mjs android/app/build/outputs/apk/debug/app-debug.apk 25
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-simulator-debug-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+      - name: Upload gradle report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-report-${{ github.sha }}
+          path: android/app/build/reports/
+          retention-days: 7
+          if-no-files-found: ignore

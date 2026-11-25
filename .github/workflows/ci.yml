@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest          # public repo: 4 vCPU / 16 GB
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Repository gates
+        run: node scripts/check-repo.mjs
+
+      - name: Unit + invariant tests
+        run: npx vitest run --reporter=dot
+
+      - name: Build headless tools
+        run: npm run build:tools
+
+      - name: Determinism — process A
+        run: node dist-tools/tools.js determinism --seeds=40 --presets=small,medium,large > det-a.json
+
+      - name: Determinism — process B (fresh)
+        run: node dist-tools/tools.js determinism --seeds=40 --presets=small,medium,large > det-b.json
+
+      - name: Determinism — compare
+        run: node scripts/compare-determinism.mjs det-a.json det-b.json
+
+      - name: Upload fixture artifacts (golden worlds are committed, generated on demand)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-fixtures-${{ github.sha }}
+          path: |
+            tests/fixtures/golden/worlds.json
+            det-a.json
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Production build
+        run: npm run build
+
+      - name: Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser end-to-end
+        run: npx playwright test --project=chromium
+
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ github.sha }}
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore

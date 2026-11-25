@@ -1,0 +1,44 @@
+name: perf
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulation-bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build headless tools
+        run: npm run build:tools
+
+      - name: Tick benchmark (medium, 50 years, speeds 1/2/4/8)
+        run: |
+          node dist-tools/tools.js bench \
+            --preset=medium --years=50 --speeds=1,2,4,8 > perf.json
+          cat perf.json
+
+      - name: Assert budgets
+        run: node tests/perf/assert-budgets.mjs perf.json --baseline=.perf/baseline.json --regression=20
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-report-${{ github.sha }}
+          path: perf.json
+          retention-days: 30

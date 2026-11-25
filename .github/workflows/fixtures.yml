@@ -1,0 +1,32 @@
+name: fixtures
+
+# Deliberate, manual regeneration of the golden-world fixture. Running this is an admission that
+# world content changed: the PR that commits the result must also bump generatorVersion or explain
+# why the old worlds are still valid (docs/WORLD_GENERATION.md §11).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  golden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:tools
+      - name: Regenerate golden worlds
+        run: node dist-tools/tools.js golden
+      - name: Show diff
+        run: git --no-pager diff --stat || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: golden-worlds-${{ github.sha }}
+          path: tests/fixtures/golden/worlds.json
+          retention-days: 14
