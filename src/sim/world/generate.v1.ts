@@ -20,7 +20,7 @@ import { recipeHashOf } from './recipeHash.ts';
 import { validateGenerated } from './validate.ts';
 import { tierOf } from '../state/worldState.ts';
 import type { CivStore, GenerationReport, SettlementStore, WorldRecipe, WorldState } from '../state/worldState.ts';
-import { allocateCivs, allocateGrids, allocateSettlements, CAPACITY } from '../state/worldState.ts';
+import { allocateCivs, allocateGrids, allocateSettlements } from '../state/worldState.ts';
 
 export const GENERATOR_VERSION_V1 = 1;
 
