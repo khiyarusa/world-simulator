@@ -25,7 +25,7 @@ The product test for every decision: *does this make the world more causally rea
 | 1 — Foundation & architecture | **complete** (design + skills) |
 | 2 — World engine & playable foundation | **implementation complete — device validation pending** (`docs/STAGE_2_REPORT.md`) |
 | 2.1 — Reliability and correctness hardening | **complete** — 13 verified defects fixed, all with regression tests (`docs/STAGE_2_1_HARDENING.md`) |
-| 3 — Living world & civilization systems | next (blocked only on the Stage 2 device protocol, or on an explicit decision to accept the gap) |
+| 3 — Living world & civilization systems | **in progress — living core delivered, political layer and balance harness outstanding** (`docs/STAGE_3_REPORT.md`) |
 | 4 — Player experience & content | not started |
 | 5 — Optimisation, QA, release | not started |
 

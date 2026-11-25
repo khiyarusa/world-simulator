@@ -6,7 +6,9 @@ and a history is written that you can read and trace back to its causes.
 
 The world does not need you. That is the point.
 
-> **Status: Stage 2 of 5 — world engine and playable foundation implemented; device validation pending.**
+> **Status: Stage 3 of 5 — in progress. A living core (population, economy, ecology, history) is
+> implemented and persists; the political layer and the balance acceptance harness are not. See
+> [`docs/STAGE_3_REPORT.md`](docs/STAGE_3_REPORT.md).**
 > A seeded world can be generated, inspected, panned, zoomed, time-controlled and saved on Android.
 > Simulation systems (population, economy, politics) start at Stage 3.
 > See [`docs/STAGE_2_REPORT.md`](docs/STAGE_2_REPORT.md) and
@@ -53,7 +55,7 @@ command and no buildings to place. The player observes, inspects, accelerates, a
 
 | Layer | Choice |
 |---|---|
-| Language | TypeScript 7 (strict) |
+| Language | TypeScript 6.0.3 (strict) |
 | Build | Vite 8 |
 | Rendering | PixiJS 8.23 (WebGL) — rendering only, never game state |
 | Simulation | TypeScript in one dedicated Web Worker, fixed 1-day tick, integer fixed-point |

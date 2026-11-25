@@ -111,15 +111,19 @@ domain-free so the golden content fixture remains meaningful.
 | 9 | demographics | monthly | births, deaths per cohort |
 | 10 | stability | daily | stability from food/health/tax/war |
 | 11 | migration | monthly | population transfers (conserving) |
-| 12 | trade | monthly | route flows, tariffs |
-| 13 | build | monthly | infrastructure, paid from stocks |
-| 14 | military | monthly | manpower, upkeep |
-| 15 | diplomacy | monthly | relations, grievances, treaties |
-| 16 | war | monthly | fronts, attrition, occupation, peace |
-| 17 | settlement-growth | monthly | tiers, founding, fragmentation, abandonment |
-| 18 | civilization | monthly | formation, culture drift, technology |
+| 12 | trade | monthly | **deferred** (Stage 3.2) |
+| 13 | build | monthly | **deferred** (Stage 3.2) |
+| 14 | military | monthly | **deferred** (Stage 3.2) |
+| 15 | diplomacy | monthly | **deferred** (Stage 3.2) |
+| 16 | war | monthly | **deferred** (Stage 3.2) |
+| 17 | settlement-growth | monthly | tiers, abandonment (founding deferred) |
+| 18 | civilization | monthly | **deferred** (Stage 3.2) |
 | 19 | events | daily | state-transition events with forward causes |
 | 20 | chronicle | yearly | per-civ yearly aggregates |
+
+Phases 1–11, 17 (partly), 19 and 20 are implemented. The rest are declared and marked deferred in the
+pipeline source; no phase pretends to work. `docs/STAGE_3_REPORT.md` §5 records the consequences for the
+acceptance gates.
 
 ## 8. Invariants
 
