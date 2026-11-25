@@ -3,7 +3,9 @@
 World Simulator — design set for the five-stage build. **Start with `../AGENTS.md`** (the rules), then
 this page (the map), then the two or three documents that own the area you are working on.
 
-Status of the whole set: **Stage 1 baseline v1.0** (2026-11-25). Design only — no code exists yet.
+Status of the whole set: **Stage 2 delivered** (2026-11-25). The world engine, renderer, worker and
+save/load are implemented; population/economy/politics begin at Stage 3. Current evidence and open
+items: [`STAGE_2_REPORT.md`](STAGE_2_REPORT.md).
 
 ## Read in this order
 
@@ -24,6 +26,7 @@ Status of the whole set: **Stage 1 baseline v1.0** (2026-11-25). Design only —
 | 12 | [`QA_AND_CI_STRATEGY.md`](QA_AND_CI_STRATEGY.md) | What runs where, the workflows, quality gates, flaky policy, device protocol. | changing CI, tests or gates |
 | 13 | [`TECHNICAL_DECISIONS.md`](TECHNICAL_DECISIONS.md) | Each decision, its alternatives, its risk, plus verified facts and open assumptions. | disagreeing with a choice, or adding one |
 | 14 | [`SKILL_USAGE.md`](SKILL_USAGE.md) | Which game-dev skills are installed, why those, and what each one changed. | start of any implementation task |
+| 15 | [`STAGE_2_REPORT.md`](STAGE_2_REPORT.md) | What Stage 2 actually built, the acceptance matrix, CI evidence and the remaining issues. | before starting Stage 3, and for any status question |
 
 ## Ownership of facts (one fact, one home)
 
