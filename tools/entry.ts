@@ -81,9 +81,11 @@ function bench(): void {
     .split(',')
     .map(Number);
   const state = generateV1(recipeFor(12345, preset));
-  const dayTicks = Math.round((years * 360) / 30); // run a 30th of the days: cost is per day
+  const dayTicks = Math.round(years * 360);
   const samples: number[] = [];
   let worst = 0;
+  // Warm up before measuring: the first ticks pay JIT and one-off allocations.
+  for (let i = 0; i < 200; i++) runDay(state);
   const heapStart = process.memoryUsage().heapUsed;
   for (let i = 0; i < dayTicks; i++) {
     const t0 = performance.now();

@@ -87,9 +87,9 @@ export const STREAM_NAMES: Readonly<Record<StreamId, string>> = {
 export function seedState(seedLo: number, seedHi: number, stream: number): RngState {
   const cursor = { v: mix32((seedLo ^ Math.imul(stream, 0x27d4eb2f)) >>> 0, (seedHi + stream) >>> 0) };
   let s0 = splitmix32(cursor);
-  let s1 = splitmix32(cursor);
-  let s2 = splitmix32(cursor);
-  let s3 = splitmix32(cursor);
+  const s1 = splitmix32(cursor);
+  const s2 = splitmix32(cursor);
+  const s3 = splitmix32(cursor);
   if ((s0 | s1 | s2 | s3) === 0) s0 = 1;
   return { s0, s1, s2, s3 };
 }

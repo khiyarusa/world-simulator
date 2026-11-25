@@ -7,12 +7,12 @@ import type { WorldState } from '../state/worldState.ts';
 import { DAYS_PER_MONTH, DAYS_PER_YEAR } from '../../core/clock.ts';
 
 export interface TickContext {
-  readonly state: WorldState;
+  state: WorldState;
   /** The day being simulated (state.day + 1). */
-  readonly day: number;
-  readonly isMonthEnd: boolean;
-  readonly isYearEnd: boolean;
-  readonly isWeekEnd: boolean;
+  day: number;
+  isMonthEnd: boolean;
+  isYearEnd: boolean;
+  isWeekEnd: boolean;
 }
 
 export type Stage = (ctx: TickContext) => void;
@@ -52,17 +52,30 @@ export function stageNames(): string[] {
   return DAILY_STAGES.map(([name]) => name);
 }
 
-/** Advance exactly one simulated day. Deterministic and side-effect free except `state`. */
+/**
+ * Advance exactly one simulated day.
+ *
+ * The context object is reused: allocating one per tick is a 400 B/tick garbage stream, which the
+ * heap-growth budget (1 MB per 10k ticks) correctly rejects (AGENTS.md R-29).
+ */
+const ctx: TickContext = {
+  state: null as unknown as WorldState,
+  day: 0,
+  isMonthEnd: false,
+  isYearEnd: false,
+  isWeekEnd: false,
+};
+
 export function runDay(state: WorldState): void {
   const day = state.day + 1;
-  const ctx: TickContext = {
-    state,
-    day,
-    isWeekEnd: day % 7 === 0,
-    isMonthEnd: day % DAYS_PER_MONTH === 0,
-    isYearEnd: day % DAYS_PER_YEAR === 0,
-  };
-  for (const [, stage] of DAILY_STAGES) stage(ctx);
+  ctx.state = state;
+  ctx.day = day;
+  ctx.isWeekEnd = day % 7 === 0;
+  ctx.isMonthEnd = day % DAYS_PER_MONTH === 0;
+  ctx.isYearEnd = day % DAYS_PER_YEAR === 0;
+  for (let i = 0; i < DAILY_STAGES.length; i++) {
+    DAILY_STAGES[i]![1](ctx);
+  }
   state.day = day;
   state.counters.ticks += 1;
 }
