@@ -7,7 +7,8 @@
  * Sea level is chosen from the generated height field so the land fraction matches the recipe's
  * target instead of being hoped for; this is why the pipeline needs no rejection sampling.
  */
-import { Rng, STREAM, createStreamStates } from '../../core/rng.ts';
+import { Rng, STREAM, STREAM_IDS, createStreamStates } from '../../core/rng.ts';
+import { SimError } from '../../core/errors.ts';
 import { crc32OfU32, crcHex } from '../../core/crc32.ts';
 import { clamp, clamp01 } from '../../core/math.ts';
 import { seedToText } from '../../core/seed.ts';
@@ -16,7 +17,7 @@ import { fbm2, ridged2, warp2 } from './noise.ts';
 import { buildHydrology } from './hydrology.ts';
 import { BIOME_FERTILITY, BIOME_VEGETATION, BIOME_WOOD, classifyBiome } from './biomes.ts';
 import { computeWaterDistance, findSpawnSites } from './spawn.ts';
-import { PRESETS, clampHarshness, clampPeoples, clampWater, harshnessSwing, landTargetPm } from './presets.ts';
+import { PRESETS, clampHarshness, clampPeoples, clampWater, harshnessSwing, isPreset, landTargetPm, presetIdOf } from './presets.ts';
 import { tierOf } from '../state/worldState.ts';
 import type { CivStore, GenerationReport, SettlementStore, WorldRecipe, WorldState } from '../state/worldState.ts';
 import { allocateCivs, allocateGrids, allocateSettlements, CAPACITY } from '../state/worldState.ts';
@@ -24,6 +25,9 @@ import { allocateCivs, allocateGrids, allocateSettlements, CAPACITY } from '../s
 export const GENERATOR_VERSION_V1 = 1;
 
 export type ProgressFn = (stage: string, pct: number) => void;
+
+const TERRAIN_STREAM_INDEX = STREAM_IDS.indexOf(STREAM.TERRAIN);
+const SPAWN_STREAM_INDEX = STREAM_IDS.indexOf(STREAM.SPAWN);
 
 const STAGE_WEIGHTS: ReadonlyArray<readonly [string, number]> = [
   ['land', 18],
@@ -52,15 +56,24 @@ class Progress {
   }
 }
 
-function recipeHashOf(recipe: WorldRecipe): string {
-  let crc = 0;
-  crc = crc32OfU32(crc, recipe.seed.lo);
+/**
+ * Recipe identity (D-32).
+ *
+ * Uses the stable numeric preset id, a domain tag, and every semantically relevant field in a fixed
+ * order. It must not depend on display strings, object property order or locale: `small` and `large`
+ * both have five letters, and hashing the length made them collide.
+ */
+const RECIPE_HASH_DOMAIN = 0x52533131; // "RS11"
+
+export function recipeHashOf(recipe: WorldRecipe): string {
+  let crc = crc32OfU32(0, RECIPE_HASH_DOMAIN);
+  crc = crc32OfU32(crc, recipe.generatorVersion);
+  crc = crc32OfU32(crc, presetIdOf(recipe.preset));
   crc = crc32OfU32(crc, recipe.seed.hi);
-  crc = crc32OfU32(crc, recipe.preset.length);
+  crc = crc32OfU32(crc, recipe.seed.lo);
   crc = crc32OfU32(crc, recipe.water);
   crc = crc32OfU32(crc, recipe.harshness);
   crc = crc32OfU32(crc, recipe.peoples);
-  crc = crc32OfU32(crc, recipe.generatorVersion);
   return crcHex(crc);
 }
 
@@ -417,6 +430,12 @@ function attempt(recipe: WorldRecipe, progress: Progress): AttemptResult {
 
   progress.complete('spawn');
 
+  // Capture the streams at the point generation actually left them. Storing fresh initial states
+  // here made every reload restart those streams from scratch (D-33).
+  const rngStates = createStreamStates(seed.lo, seed.hi);
+  if (TERRAIN_STREAM_INDEX >= 0) rngStates[TERRAIN_STREAM_INDEX] = windRng.state;
+  if (SPAWN_STREAM_INDEX >= 0) rngStates[SPAWN_STREAM_INDEX] = spawnRng.state;
+
   const state: WorldState = {
     width,
     height,
@@ -427,7 +446,7 @@ function attempt(recipe: WorldRecipe, progress: Progress): AttemptResult {
     civs,
     day: 1,
     counters: { settlementsFounded: settlements.count, ticks: 0, droppedTicks: 0 },
-    rngStates: createStreamStates(seed.lo, seed.hi),
+    rngStates,
     report,
   };
 
@@ -446,6 +465,14 @@ export function generateV1(
   onProgress?: ProgressFn,
   clock: () => number = () => 0,
 ): WorldState {
+  if (recipeIn.generatorVersion !== GENERATOR_VERSION_V1) {
+    throw new SimError('UNSUPPORTED_VERSION', `generator version ${recipeIn.generatorVersion} is not supported`, {
+      supported: GENERATOR_VERSION_V1,
+    });
+  }
+  if (!isPreset(recipeIn.preset)) {
+    throw new SimError('GEN_INVALID', `unknown preset ${String(recipeIn.preset)}`);
+  }
   const recipe: WorldRecipe = {
     ...recipeIn,
     water: clampWater(recipeIn.water),

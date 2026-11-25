@@ -119,7 +119,11 @@ export type WorkerMsg =
       readonly elevation: Int16Array;
     }
   | ({ readonly t: 'saveShard' } & SaveShard)
-  | { readonly t: 'saveDone'; readonly sid: number; readonly checksum: string; readonly bytes: number }
+  /**
+   * The worker has serialised a coherent snapshot and the shards are on their way. This is *not*
+   * durability: the main thread reports success only after the IndexedDB transaction commits (D-37).
+   */
+  | { readonly t: 'savePrepared'; readonly sid: number; readonly checksum: string; readonly bytes: number }
   | { readonly t: 'notify'; readonly level: 'info' | 'warn' | 'error'; readonly code: string; readonly msg: string }
   | { readonly t: 'crashed'; readonly code: string; readonly msg: string; readonly lastGoodDay: number };
 

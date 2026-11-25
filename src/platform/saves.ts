@@ -1,16 +1,28 @@
 /**
  * Save orchestration on the main thread (docs/SAVE_AND_DATA_MODEL.md §5–§6).
  *
- * The worker produces shards; this module verifies, writes them atomically as a new generation,
- * and on load picks the newest generation whose every shard passes its CRC.
+ * A generation is valid only when **every** required shard exists, its CRC matches and its payload is
+ * structurally sound. Recovery picks the newest valid generation, then *repoints* the metadata at it
+ * and deletes the damaged newer generation, so the next save cannot promote corruption to "backup"
+ * (D-38).
  */
 import { crc32 } from '../core/crc32.ts';
 import { SimError } from '../core/errors.ts';
-import { SAVE_SCHEMA_VERSION } from '../core/saveSchema.ts';
+import { checkShardSet, SAVE_SCHEMA_VERSION } from '../core/saveSchema.ts';
 import type { SaveShard } from '../worker/protocol.ts';
-import type { StoredShard, WorldDoc, WorldDb } from './storage.ts';
+import type { StoredShard, WorldDoc } from './storage.ts';
 
 export const DEFAULT_WORLD_ID = 'world-1';
+
+/** The slice of the database that save orchestration needs; `WorldDb` implements it, tests fake it. */
+export interface WorldStore {
+  getWorld(id: string): Promise<WorldDoc | null>;
+  readGeneration(worldId: string, gen: number): Promise<StoredShard[]>;
+  commitGeneration(doc: WorldDoc, gen: number, shards: readonly Omit<StoredShard, 'worldId' | 'gen'>[]): Promise<void>;
+  pruneGenerations(worldId: string, keepGen: number): Promise<void>;
+  putWorld(doc: WorldDoc): Promise<void>;
+  resetToGeneration(doc: WorldDoc, gen: number): Promise<void>;
+}
 
 async function inflate(payload: ArrayBuffer, compressed: boolean): Promise<Uint8Array> {
   const bytes = new Uint8Array(payload);
@@ -22,12 +34,23 @@ async function inflate(payload: ArrayBuffer, compressed: boolean): Promise<Uint8
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/** A generation is loadable only if every shard is present and its CRC matches. */
-export async function verifyGeneration(shards: readonly StoredShard[]): Promise<{ ok: boolean; reason?: string }> {
+/**
+ * A generation is loadable only if the shard set is complete, every CRC matches and the payload is
+ * non-empty. CRC-validating whatever happens to exist is not validation.
+ */
+export async function verifyGeneration(
+  shards: readonly StoredShard[],
+): Promise<{ ok: boolean; reason?: string }> {
   if (shards.length === 0) return { ok: false, reason: 'no shards' };
+  const setProblem = checkShardSet(shards.map((s) => s.name));
+  if (setProblem) return { ok: false, reason: setProblem };
   for (const shard of shards) {
+    if (shard.bytes <= 0) return { ok: false, reason: `${shard.name} is empty` };
     try {
       const raw = await inflate(shard.payload, shard.compressed);
+      if (raw.byteLength !== shard.bytes) {
+        return { ok: false, reason: `${shard.name} length ${raw.byteLength} != declared ${shard.bytes}` };
+      }
       if (crc32(raw) !== (shard.crc32 >>> 0)) return { ok: false, reason: `crc mismatch in ${shard.name}` };
     } catch (e) {
       return { ok: false, reason: `${shard.name}: ${(e as Error).message}` };
@@ -39,7 +62,7 @@ export async function verifyGeneration(shards: readonly StoredShard[]): Promise<
 export interface LoadedWorld {
   readonly doc: WorldDoc;
   readonly shards: SaveShard[];
-  /** true when the newest generation was damaged and the previous one was used. */
+  /** true when the newest generation was damaged and an older one is now current. */
   readonly recovered: boolean;
 }
 
@@ -48,7 +71,7 @@ export interface LoadedWorld {
  * On any failure the previous generation stays exactly as it was.
  */
 export async function saveWorld(
-  db: WorldDb,
+  db: WorldStore,
   doc: WorldDoc,
   shards: readonly SaveShard[],
   day: number,
@@ -56,6 +79,9 @@ export async function saveWorld(
   population: number,
 ): Promise<WorldDoc> {
   if (shards.length === 0) throw new SimError('SAVE_CORRUPT', 'refusing to save zero shards');
+  const setProblem = checkShardSet(shards.map((s) => s.name));
+  if (setProblem) throw new SimError('SAVE_CORRUPT', `incomplete snapshot: ${setProblem}`);
+
   const gen = doc.currentGen + 1;
   const next: WorldDoc = {
     ...doc,
@@ -73,7 +99,7 @@ export async function saveWorld(
   return next;
 }
 
-export async function loadWorld(db: WorldDb, id: string): Promise<LoadedWorld | null> {
+export async function loadWorld(db: WorldStore, id: string): Promise<LoadedWorld | null> {
   const doc = await db.getWorld(id);
   if (!doc) return null;
   if (doc.schemaVersion > SAVE_SCHEMA_VERSION) {
@@ -81,18 +107,26 @@ export async function loadWorld(db: WorldDb, id: string): Promise<LoadedWorld | 
   }
 
   const candidates = [doc.currentGen, doc.prevGen].filter((g) => g > 0);
-  for (let i = 0; i < candidates.length; i++) {
-    const gen = candidates[i]!;
+  let lastReason = 'no generation recorded';
+  for (const gen of candidates) {
     const rows = await db.readGeneration(id, gen);
     const check = await verifyGeneration(rows);
-    if (check.ok) {
-      return { doc, shards: rows.map(toShard), recovered: i > 0 };
+    if (!check.ok) {
+      lastReason = check.reason ?? 'unknown';
+      continue;
     }
-    if (i === candidates.length - 1) {
-      throw new SimError('SAVE_CORRUPT', `all save generations are damaged (${check.reason ?? 'unknown'})`);
+
+    const recovered = gen !== doc.currentGen;
+    if (recovered) {
+      // The damaged generation is deleted here, not merely skipped.
+      await db.resetToGeneration(doc, gen);
+      const repointed: WorldDoc = { ...doc, currentGen: gen, prevGen: 0, updatedAt: Date.now() };
+      return { doc: repointed, shards: rows.map(toShard), recovered: true };
     }
+    return { doc, shards: rows.map(toShard), recovered: false };
   }
-  return null;
+
+  throw new SimError('SAVE_CORRUPT', `all save generations are damaged (${lastReason})`);
 }
 
 function toShard(row: StoredShard): SaveShard {

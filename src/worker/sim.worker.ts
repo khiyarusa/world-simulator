@@ -10,7 +10,8 @@ import { generateV1 } from '../sim/world/generate.v1.ts';
 import { runDay } from '../sim/systems/pipeline.ts';
 import { civName, settlementName } from '../sim/world/names.ts';
 import { CAPACITY, type WorldRecipe, type WorldState } from '../sim/state/worldState.ts';
-import { deserializeWorld, serializeWorld, SAVE_SCHEMA_VERSION } from './serialize.ts';
+import { deserializeWorld, encodeSnapshot, SAVE_SCHEMA_VERSION } from './serialize.ts';
+import { captureWorld } from './snapshot.ts';
 import { Scheduler } from './scheduler.ts';
 import { MAX_DELTA_HZ, type Cmd, type MirrorDelta, type SaveShard, type SettlementDetail, type Speed, type WorldMetaMsg, type WorkerMsg } from './protocol.ts';
 
@@ -265,18 +266,57 @@ async function load(shards: readonly SaveShard[]): Promise<void> {
   notify('info', 'WORLD_LOADED', `Loaded day ${loaded.state.day}`);
 }
 
+let saving = false;
+
+/**
+ * Serialise one coherent snapshot.
+ *
+ * `captureWorld` is synchronous and runs between ticks, so it cannot be interleaved with a tick;
+ * everything after it works on immutable byte copies. Computing the checksum from the live state
+ * after an `await` was a real defect: the day could advance between capturing the terrain and
+ * hashing the world (D-37).
+ */
 async function save(sid: number): Promise<void> {
   if (!state) {
     notify('warn', 'NO_WORLD', 'save requested without a world');
     return;
   }
-  const shards = await serializeWorld(state);
-  let total = 0;
-  for (const shard of shards) {
-    total += shard.bytes;
-    post({ t: 'saveShard' , ...shard }, [shard.payload]);
+  if (saving) {
+    notify('warn', 'SAVE_BUSY', 'a save is already being prepared');
+    return;
   }
-  post({ t: 'saveDone', sid, checksum: worldChecksum(state).toString(16), bytes: total });
+  saving = true;
+  try {
+    const snapshot = captureWorld(state);
+    const shards = await encodeSnapshot(snapshot);
+    let total = 0;
+    for (const shard of shards) {
+      total += shard.bytes;
+      post({ t: 'saveShard', ...shard }, [shard.payload]);
+    }
+    post({ t: 'savePrepared', sid, checksum: snapshot.checksum.toString(16), bytes: total });
+  } finally {
+    saving = false;
+  }
+}
+
+/** Runtime validation: a malformed command must be rejected, never trusted. */
+function isSpeed(value: unknown): value is Speed {
+  return value === 0 || value === 1 || value === 2 || value === 4 || value === 8;
+}
+
+function assertRecipe(recipe: WorldRecipe): void {
+  const numeric = [recipe.water, recipe.harshness, recipe.peoples];
+  if (!numeric.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+    throw new SimError('GEN_INVALID', 'recipe contains a non-finite value');
+  }
+  if (recipe.water < 0 || recipe.water > 100) throw new SimError('GEN_INVALID', `water ${recipe.water}`);
+  if (recipe.harshness < 0 || recipe.harshness > 100) throw new SimError('GEN_INVALID', `harshness ${recipe.harshness}`);
+  if (recipe.peoples < 1 || recipe.peoples > 12) throw new SimError('GEN_INVALID', `peoples ${recipe.peoples}`);
+  if (!Number.isInteger(recipe.seed.lo) || !Number.isInteger(recipe.seed.hi)) {
+    throw new SimError('GEN_INVALID', 'seed words must be integers');
+  }
+  if (!Number.isInteger(recipe.generatorVersion)) throw new SimError('GEN_INVALID', 'generatorVersion must be an integer');
 }
 
 function handle(cmd: Cmd): void {
@@ -288,9 +328,23 @@ function handle(cmd: Cmd): void {
       notify('info', 'READY', 'simulation worker ready');
       break;
     case 'create':
+      if (saving) {
+        notify('warn', 'BUSY', 'cannot create a world while a save is being prepared');
+        break;
+      }
+      try {
+        assertRecipe(cmd.recipe);
+      } catch (e) {
+        reportFailure(e);
+        break;
+      }
       void create(cmd.recipe).catch(reportFailure);
       break;
     case 'load':
+      if (saving) {
+        notify('warn', 'BUSY', 'cannot load a world while a save is being prepared');
+        break;
+      }
       void load(cmd.shards).catch(reportFailure);
       break;
     case 'save':
@@ -311,6 +365,10 @@ function handle(cmd: Cmd): void {
       break;
     }
     case 'speed':
+      if (!isSpeed(cmd.speed)) {
+        notify('error', 'PROTOCOL', `invalid speed ${String(cmd.speed)}`);
+        break;
+      }
       speed = cmd.speed;
       scheduler.setSpeed(cmd.speed);
       lastTickAt = now();
@@ -328,9 +386,14 @@ function handle(cmd: Cmd): void {
       lastTickAt = now();
       schedule(0);
       break;
-    case 'view':
     case 'select':
-      selectedId = cmd.t === 'select' ? cmd.id : selectedId;
+      if (cmd.id !== null && (!Number.isInteger(cmd.id) || cmd.id < 0 || cmd.id >= CAPACITY.settlements)) {
+        notify('warn', 'PROTOCOL', `select id out of range: ${String(cmd.id)}`);
+        break;
+      }
+      selectedId = cmd.id;
+      break;
+    case 'view':
       break;
     case 'release':
       pool.release(cmd.buffers);

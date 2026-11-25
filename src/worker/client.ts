@@ -166,7 +166,7 @@ export class WorkerClient {
           payload: msg.payload,
         });
         break;
-      case 'saveDone': {
+      case 'savePrepared': {
         const waiter = this.saveWaiter;
         this.saveWaiter = null;
         const shards = this.saveBuffer;

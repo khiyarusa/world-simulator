@@ -98,6 +98,29 @@ export class WorldDb {
     await done(tx);
   }
 
+  /** Metadata-only update (used when a recovered generation becomes current, D-38). */
+  async putWorld(doc: WorldDoc): Promise<void> {
+    const db = await this.open();
+    const tx = db.transaction('worlds', 'readwrite');
+    tx.objectStore('worlds').put(doc);
+    await done(tx);
+  }
+
+  /**
+   * Make `gen` the only generation for a world and point the metadata at it, in one transaction.
+   * Used after recovering from a damaged newer generation: leaving the damaged one on disk would
+   * let the next save promote it to "previous", which is exactly the trap D-38 exists to close.
+   */
+  async resetToGeneration(doc: WorldDoc, gen: number): Promise<void> {
+    const db = await this.open();
+    const tx = db.transaction(['worlds', 'shards'], 'readwrite');
+    const shards = tx.objectStore('shards');
+    shards.delete(IDBKeyRange.bound([doc.id, 0, ''], [doc.id, gen - 1, '\uffff']));
+    shards.delete(IDBKeyRange.bound([doc.id, gen + 1, ''], [doc.id, Number.MAX_SAFE_INTEGER, '\uffff']));
+    tx.objectStore('worlds').put({ ...doc, currentGen: gen, prevGen: 0, updatedAt: Date.now() });
+    await done(tx);
+  }
+
   async getWorld(id: string): Promise<WorldDoc | null> {
     const db = await this.open();
     const tx = db.transaction('worlds', 'readonly');

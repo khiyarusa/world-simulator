@@ -1,59 +1,38 @@
 /**
- * Save shard serialisation (docs/SAVE_AND_DATA_MODEL.md §4).
+ * Save shard encoding and decoding (docs/SAVE_AND_DATA_MODEL.md §4).
  *
- * Binary grids with an explicit header, JSON only for the small meta shard. Every shard
- * carries a CRC32 of its uncompressed bytes so a corrupted save is detected, never half-read.
+ * `captureWorld` (snapshot.ts) produces an immutable snapshot synchronously; this module compresses
+ * and decompresses it. Decoding validates the complete required shard set, every header, every length
+ * and every CRC before it hands a world back.
  */
 import { crc32 } from '../core/crc32.ts';
 import { asErrorMessage, SimError } from '../core/errors.ts';
-import { seedOf, seedToText, parseSeedText } from '../core/seed.ts';
+import { checkShardSet, SAVE_SCHEMA_VERSION } from '../core/saveSchema.ts';
+import { parseSeedText, seedOf } from '../core/seed.ts';
 import type { Seed } from '../core/seed.ts';
 import { STREAM_IDS } from '../core/rng.ts';
 import type { RngState } from '../core/rng.ts';
 import type { SaveShard } from './protocol.ts';
+import { captureWorld } from './snapshot.ts';
+import type { WorldSnapshot } from './snapshot.ts';
+import {
+  CIVS_HEADER_BYTES,
+  CIVS_MAGIC,
+  CIVS_RECORD_BYTES,
+  GRID_BYTES,
+  SETTLEMENTS_HEADER_BYTES,
+  SETTLEMENTS_MAGIC,
+  SETTLEMENT_RECORD_BYTES,
+  TERRAIN_HEADER_BYTES,
+  TERRAIN_MAGIC,
+} from './shardFormat.ts';
+import type { MetaDoc } from './shardFormat.ts';
 import { allocateCivs, allocateGrids, allocateSettlements, GRID_KEYS } from '../sim/state/worldState.ts';
-import type { CivStore, GenerationReport, SettlementStore, WorldRecipe, WorldState } from '../sim/state/worldState.ts';
+import type { CivStore, SettlementStore, WorldRecipe, WorldState } from '../sim/state/worldState.ts';
 
 export { SAVE_SCHEMA_VERSION } from '../core/saveSchema.ts';
-import { SAVE_SCHEMA_VERSION } from '../core/saveSchema.ts';
-const TERRAIN_MAGIC = 0x31475357; // "WSG1" little-endian
-const SETTLEMENTS_MAGIC = 0x31535357; // "WSS1"
-const CIVS_MAGIC = 0x31564357; // "WCV1"
 
-/** Bytes per element, in GRID_KEYS order. Part of the save format. */
-const GRID_BYTES = [2, 1, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1] as const;
-
-interface MetaDoc {
-  schemaVersion: number;
-  seedText: string;
-  recipe: { preset: string; water: number; harshness: number; peoples: number; generatorVersion: number };
-  day: number;
-  width: number;
-  height: number;
-  seaLevel: number;
-  counters: { settlementsFounded: number; ticks: number; droppedTicks: number };
-  rng: RngState[];
-  report: GenerationReport;
-}
-
-const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-
-function concat(parts: Uint8Array[]): Uint8Array {
-  let total = 0;
-  for (const p of parts) total += p.length;
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const p of parts) {
-    out.set(p, offset);
-    offset += p.length;
-  }
-  return out;
-}
-
-function viewOf(view: Int16Array | Int8Array | Uint8Array | Uint16Array | Int32Array | Uint32Array): Uint8Array {
-  return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-}
 
 async function compressIfUseful(raw: Uint8Array): Promise<{ bytes: Uint8Array; compressed: boolean }> {
   if (typeof CompressionStream === 'undefined') return { bytes: raw, compressed: false };
@@ -67,93 +46,20 @@ async function compressIfUseful(raw: Uint8Array): Promise<{ bytes: Uint8Array; c
   }
 }
 
-async function shardOf(name: string, raw: Uint8Array): Promise<SaveShard> {
-  const crc = crc32(raw);
-  const { bytes, compressed } = await compressIfUseful(raw);
-  const payload = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-  return { name, crc32: crc, compressed, bytes: raw.byteLength, payload };
+/** Compress a frozen snapshot. Safe to await: the bytes can no longer change. */
+export async function encodeSnapshot(snapshot: WorldSnapshot): Promise<SaveShard[]> {
+  const out: SaveShard[] = [];
+  for (const shard of snapshot.shards) {
+    const { bytes, compressed } = await compressIfUseful(shard.raw);
+    const payload = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    out.push({ name: shard.name, crc32: shard.crc32, compressed, bytes: shard.bytes, payload });
+  }
+  return out;
 }
 
+/** Convenience for tests and tools: capture then encode in one call. */
 export async function serializeWorld(state: WorldState, schemaVersion = SAVE_SCHEMA_VERSION): Promise<SaveShard[]> {
-  const meta: MetaDoc = {
-    schemaVersion,
-    seedText: seedToText(state.recipe.seed),
-    recipe: {
-      preset: state.recipe.preset,
-      water: state.recipe.water,
-      harshness: state.recipe.harshness,
-      peoples: state.recipe.peoples,
-      generatorVersion: state.recipe.generatorVersion,
-    },
-    day: state.day,
-    width: state.width,
-    height: state.height,
-    seaLevel: state.seaLevel,
-    counters: state.counters,
-    rng: state.rngStates.map((s) => ({ s0: s.s0, s1: s.s1, s2: s.s2, s3: s.s3 })),
-    report: state.report,
-  };
-
-  const terrainHeader = new Uint8Array(16);
-  const tdv = new DataView(terrainHeader.buffer);
-  tdv.setUint32(0, TERRAIN_MAGIC, true);
-  tdv.setUint16(4, schemaVersion, true);
-  tdv.setUint16(6, GRID_KEYS.length, true);
-  tdv.setUint16(8, state.width, true);
-  tdv.setUint16(10, state.height, true);
-  tdv.setUint32(12, 0, true);
-
-  const gridParts: Uint8Array[] = [];
-  for (let g = 0; g < GRID_KEYS.length; g++) {
-    const key = GRID_KEYS[g]!;
-    const arr = state.grids[key];
-    const expected = GRID_BYTES[g]!;
-    const bytes = viewOf(arr);
-    if (bytes.byteLength !== state.width * state.height * expected) {
-      throw new SimError('INVARIANT', `grid ${key} has unexpected byte length`);
-    }
-    gridParts.push(bytes);
-  }
-
-  const settHeader = new Uint8Array(8);
-  const sdv = new DataView(settHeader.buffer);
-  sdv.setUint32(0, SETTLEMENTS_MAGIC, true);
-  sdv.setUint16(4, schemaVersion, true);
-  sdv.setUint16(6, state.settlements.count, true);
-
-  const s = state.settlements;
-  const civHeader = new Uint8Array(8);
-  const cdv = new DataView(civHeader.buffer);
-  cdv.setUint32(0, CIVS_MAGIC, true);
-  cdv.setUint16(4, schemaVersion, true);
-  cdv.setUint16(6, state.civs.count, true);
-  const c = state.civs;
-
-  const shards: SaveShard[] = [];
-  shards.push(await shardOf('meta', encoder.encode(JSON.stringify(meta))));
-  shards.push(await shardOf('terrain', concat([terrainHeader, ...gridParts])));
-  shards.push(
-    await shardOf(
-      'settlements',
-      concat([
-        settHeader,
-        viewOf(s.x.subarray(0, s.count)),
-        viewOf(s.y.subarray(0, s.count)),
-        viewOf(s.pop.subarray(0, s.count)),
-        viewOf(s.civ.subarray(0, s.count)),
-        viewOf(s.tier.subarray(0, s.count)),
-        viewOf(s.nameIdx.subarray(0, s.count)),
-        viewOf(s.foundedDay.subarray(0, s.count)),
-      ]),
-    ),
-  );
-  shards.push(
-    await shardOf(
-      'civs',
-      concat([civHeader, viewOf(c.capital.subarray(0, c.count)), viewOf(c.colorIdx.subarray(0, c.count)), viewOf(c.nameIdx.subarray(0, c.count))]),
-    ),
-  );
-  return shards;
+  return encodeSnapshot(captureWorld(state, schemaVersion));
 }
 
 async function inflate(shard: SaveShard): Promise<Uint8Array> {
@@ -189,13 +95,16 @@ export async function deserializeWorld(shards: readonly SaveShard[]): Promise<De
     return await deserializeInner(shards);
   } catch (e) {
     if (e instanceof SimError) throw e;
-    // Truncated headers and short payloads surface as RangeError from DataView; both mean the
-    // same thing to the player: this save is damaged.
+    // Truncated headers and short payloads surface as RangeError from DataView; both mean the same
+    // thing to the player: this save is damaged.
     throw new SimError('SAVE_CORRUPT', asErrorMessage(e));
   }
 }
 
 async function deserializeInner(shards: readonly SaveShard[]): Promise<DeserializedWorld> {
+  const setProblem = checkShardSet(shards.map((s) => s.name));
+  if (setProblem) throw new SimError('SAVE_CORRUPT', setProblem);
+
   const byName = new Map<string, SaveShard>();
   for (const s of shards) byName.set(s.name, s);
   const metaShard = byName.get('meta');
@@ -212,8 +121,15 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
   } catch (e) {
     throw new SimError('SAVE_CORRUPT', `meta shard unreadable: ${asErrorMessage(e)}`);
   }
+  if (!Number.isInteger(meta.schemaVersion) || meta.schemaVersion < 1) {
+    throw new SimError('SAVE_CORRUPT', 'meta schema version invalid');
+  }
   if (meta.schemaVersion > SAVE_SCHEMA_VERSION) {
     throw new SimError('SAVE_SCHEMA_NEWER', `save is version ${meta.schemaVersion}`);
+  }
+  if (meta.recipe.preset !== meta.preset) throw new SimError('SAVE_CORRUPT', 'recipe preset mismatch');
+  if (meta.recipe.generatorVersion !== 1) {
+    throw new SimError('UNSUPPORTED_VERSION', `generator version ${meta.recipe.generatorVersion}`);
   }
 
   const parsedSeed = parseSeedText(meta.seedText);
@@ -221,8 +137,13 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
   const seed: Seed = seedOf(parsedSeed.lo, parsedSeed.hi);
 
   const { width, height } = meta;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 8 || height < 8) {
+    throw new SimError('SAVE_CORRUPT', `bad world dimensions ${width}x${height}`);
+  }
+
   const grids = allocateGrids(width, height);
   const terrain = await readShard(terrainShard);
+  if (terrain.byteLength < TERRAIN_HEADER_BYTES) throw new SimError('SAVE_CORRUPT', 'terrain header truncated');
   const tdv = new DataView(terrain.buffer, terrain.byteOffset, terrain.byteLength);
   if (tdv.getUint32(0, true) !== TERRAIN_MAGIC) throw new SimError('SAVE_CORRUPT', 'terrain magic');
   if (tdv.getUint16(4, true) !== meta.schemaVersion) throw new SimError('SAVE_CORRUPT', 'terrain version');
@@ -230,12 +151,17 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
   if (tdv.getUint16(8, true) !== width || tdv.getUint16(10, true) !== height) {
     throw new SimError('SAVE_CORRUPT', 'grid dimensions');
   }
-  let offset = 16;
+  let expectedTerrain = TERRAIN_HEADER_BYTES;
+  for (let g = 0; g < GRID_KEYS.length; g++) expectedTerrain += width * height * GRID_BYTES[g]!;
+  if (terrain.byteLength !== expectedTerrain) {
+    throw new SimError('SAVE_CORRUPT', `terrain length ${terrain.byteLength} != ${expectedTerrain}`);
+  }
+
+  let offset = TERRAIN_HEADER_BYTES;
   for (let g = 0; g < GRID_KEYS.length; g++) {
     const key = GRID_KEYS[g]!;
     const bytesPer = GRID_BYTES[g]!;
     const len = width * height * bytesPer;
-    if (offset + len > terrain.byteLength) throw new SimError('SAVE_CORRUPT', `terrain truncated at ${key}`);
     new Uint8Array(grids[key].buffer, grids[key].byteOffset, len).set(
       new Uint8Array(terrain.buffer, terrain.byteOffset + offset, len),
     );
@@ -244,12 +170,18 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
 
   const settlements: SettlementStore = allocateSettlements();
   const sett = await readShard(settShard);
+  if (sett.byteLength < SETTLEMENTS_HEADER_BYTES) throw new SimError('SAVE_CORRUPT', 'settlements header truncated');
   const sdv = new DataView(sett.buffer, sett.byteOffset, sett.byteLength);
   if (sdv.getUint32(0, true) !== SETTLEMENTS_MAGIC) throw new SimError('SAVE_CORRUPT', 'settlements magic');
+  if (sdv.getUint16(4, true) !== meta.schemaVersion) throw new SimError('SAVE_CORRUPT', 'settlements version');
   const sCount = sdv.getUint16(6, true);
   if (sCount > settlements.x.length) throw new SimError('SAVE_CORRUPT', 'settlement count over capacity');
+  const expectedSett = SETTLEMENTS_HEADER_BYTES + sCount * SETTLEMENT_RECORD_BYTES;
+  if (sett.byteLength !== expectedSett) {
+    throw new SimError('SAVE_CORRUPT', `settlements length ${sett.byteLength} != ${expectedSett}`);
+  }
   settlements.count = sCount;
-  let so = 8;
+  let so = SETTLEMENTS_HEADER_BYTES;
   so = readU16Into(sett, so, settlements.x, sCount);
   so = readU16Into(sett, so, settlements.y, sCount);
   so = readI32Into(sett, so, settlements.pop, sCount);
@@ -260,12 +192,19 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
 
   const civs: CivStore = allocateCivs();
   const civBytes = await readShard(civShard);
+  if (civBytes.byteLength < CIVS_HEADER_BYTES) throw new SimError('SAVE_CORRUPT', 'civs header truncated');
   const cdv = new DataView(civBytes.buffer, civBytes.byteOffset, civBytes.byteLength);
   if (cdv.getUint32(0, true) !== CIVS_MAGIC) throw new SimError('SAVE_CORRUPT', 'civs magic');
+  if (cdv.getUint16(4, true) !== meta.schemaVersion) throw new SimError('SAVE_CORRUPT', 'civs version');
   const cCount = cdv.getUint16(6, true);
   if (cCount > civs.capital.length) throw new SimError('SAVE_CORRUPT', 'civ count over capacity');
+  if (cCount > sCount) throw new SimError('SAVE_CORRUPT', 'more civs than settlements');
+  const expectedCivs = CIVS_HEADER_BYTES + cCount * CIV_RECORD_BYTES;
+  if (civBytes.byteLength !== expectedCivs) {
+    throw new SimError('SAVE_CORRUPT', `civs length ${civBytes.byteLength} != ${expectedCivs}`);
+  }
   civs.count = cCount;
-  let co = 8;
+  let co = CIVS_HEADER_BYTES;
   co = readU16Into(civBytes, co, civs.capital, cCount);
   co = readU8Into(civBytes, co, civs.colorIdx, cCount);
   readU16Into(civBytes, co, civs.nameIdx, cCount);
@@ -279,10 +218,15 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
     generatorVersion: meta.recipe.generatorVersion,
   };
 
+  if (!Array.isArray(meta.rng) || meta.rng.length !== STREAM_IDS.length) {
+    throw new SimError('SAVE_CORRUPT', `expected ${STREAM_IDS.length} RNG streams, found ${meta.rng?.length ?? 0}`);
+  }
   const rngStates: RngState[] = STREAM_IDS.map((_, i) => {
     const s = meta.rng[i];
     return s ? { s0: s.s0 >>> 0, s1: s.s1 >>> 0, s2: s.s2 >>> 0, s3: s.s3 >>> 0 } : { s0: 1, s1: 0, s2: 0, s3: 0 };
   });
+
+  if (!Number.isInteger(meta.day) || meta.day < 1) throw new SimError('SAVE_CORRUPT', `bad day ${meta.day}`);
 
   const state: WorldState = {
     width,

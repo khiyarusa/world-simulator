@@ -122,3 +122,90 @@ test('generates different worlds from different seeds', async ({ page }) => {
   expect(first).toBeGreaterThan(0);
   expect(second).not.toBe(first);
 });
+
+test('recovers a damaged generation from the previous one and repairs the database', async ({ page }) => {
+  await bootToCreation(page);
+  await generateWorld(page, 'CAFEBABE-00000003');
+  const before = await page.evaluate(() => window.__ws?.state());
+  expect(before?.settlements ?? 0).toBeGreaterThan(0);
+
+  // two saves => generation 1 (backup) and generation 2 (current)
+  await page.evaluate(() => window.__ws?.save());
+  await expect(page.locator('#toast')).toHaveText(/saved/i, { timeout: 30_000 });
+  await page.evaluate(() => window.__ws?.save());
+  await expect(page.locator('#toast')).toHaveText(/saved/i, { timeout: 30_000 });
+
+  const corrupted = await page.evaluate(async () => {
+    const open = (): Promise<IDBDatabase> =>
+      new Promise((resolve, reject) => {
+        const request = indexedDB.open('world-simulator');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    const db = await open();
+    const doc = await new Promise<{ currentGen: number }>((resolve, reject) => {
+      const request = db.transaction('worlds').objectStore('worlds').get('world-1');
+      request.onsuccess = () => resolve(request.result as { currentGen: number });
+      request.onerror = () => reject(request.error);
+    });
+    const gen = doc.currentGen;
+    if (gen < 2) return { ok: false, gen, reason: 'no backup generation' };
+
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('shards', 'readwrite');
+      const store = tx.objectStore('shards');
+      const range = IDBKeyRange.bound(['world-1', gen, ''], ['world-1', gen, '\uffff']);
+      const all = store.getAll(range);
+      all.onsuccess = () => {
+        const rows = all.result as Array<{ name: string; payload: ArrayBuffer }>;
+        const terrain = rows.find((r) => r.name === 'terrain');
+        if (!terrain) {
+          reject(new Error('terrain shard missing'));
+          return;
+        }
+        const bytes = new Uint8Array(terrain.payload.slice(0));
+        bytes[Math.floor(bytes.length / 2)] = (bytes[Math.floor(bytes.length / 2)] ?? 0) ^ 0xff;
+        terrain.payload = bytes.buffer as ArrayBuffer;
+        store.put({ ...terrain, worldId: 'world-1', gen, crc32: 0 });
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+    db.close();
+    return { ok: true, gen };
+  });
+  expect(corrupted.ok).toBe(true);
+
+  await page.reload();
+  await page.waitForFunction(() => window.__ws?.state().world === true, undefined, { timeout: 90_000 });
+  await page.waitForFunction(() => /recover/i.test(document.getElementById('toast')?.textContent ?? ''), undefined, {
+    timeout: 30_000,
+  });
+
+  const after = await page.evaluate(() => window.__ws?.state());
+  expect(after?.settlements).toBe(before?.settlements);
+
+  // the damaged generation must be gone, and the world must point at the recovered one
+  const repaired = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('world-simulator');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const doc = await new Promise<{ currentGen: number; prevGen: number }>((resolve, reject) => {
+      const request = db.transaction('worlds').objectStore('worlds').get('world-1');
+      request.onsuccess = () => resolve(request.result as { currentGen: number; prevGen: number });
+      request.onerror = () => reject(request.error);
+    });
+    const gens = await new Promise<number[]>((resolve, reject) => {
+      const request = db.transaction('shards').objectStore('shards').getAll();
+      request.onsuccess = () => resolve((request.result as Array<{ gen: number }>).map((r) => r.gen));
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return { doc, gens: [...new Set(gens)] };
+  });
+  expect(repaired.doc.prevGen).toBe(0);
+  expect(repaired.gens).toEqual([repaired.doc.currentGen]);
+});

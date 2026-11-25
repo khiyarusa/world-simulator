@@ -16,6 +16,27 @@ export const PRESETS: Readonly<Record<Preset, PresetSpec>> = {
 export const PRESET_ORDER: readonly Preset[] = ['small', 'medium', 'large'];
 export const DEFAULT_PRESET: Preset = 'medium';
 
+/**
+ * Stable numeric identity used by recipe hashing (D-32).
+ *
+ * The previous hash used `preset.length`, which made "small" and "large" collide (both 5). A hash
+ * must never be derived from a display string. These ids are part of the persisted recipe identity
+ * and may never be renumbered.
+ */
+export const PRESET_IDS: Readonly<Record<Preset, number>> = {
+  small: 1,
+  medium: 2,
+  large: 3,
+};
+
+export function presetIdOf(preset: Preset): number {
+  return PRESET_IDS[preset] ?? 0;
+}
+
+export function isPreset(value: unknown): value is Preset {
+  return value === 'small' || value === 'medium' || value === 'large';
+}
+
 export const RECIPE_LIMITS = {
   waterMin: 0,
   waterMax: 100,

@@ -8,17 +8,12 @@
 import { Application, CanvasSource, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import type { MirrorDelta, WorldMetaMsg } from '../worker/protocol.ts';
 import { Camera, type Point } from './camera.ts';
+import { TILE_PX, markerWorldScale, selectionRadiusWorld } from './markerGeometry.ts';
 import { civColor } from './palette.ts';
 import { createSettlementTextures } from './settlementSprites.ts';
 import type { BakedTerrain } from './terrainBake.ts';
 
-/** World pixels per tile at zoom 1.0 (docs/UX_AND_VISUAL_DIRECTION.md §1). */
-export const TILE_PX = 32;
-
-/** Marker size in screen pixels per settlement tier (camp → metropolis). */
-function markerPx(tier: number): number {
-  return [15, 19, 24, 30, 38][tier] ?? 15;
-}
+export { TILE_PX } from './markerGeometry.ts';
 
 export interface ViewState {
   readonly zoom: number;
@@ -51,8 +46,8 @@ export class Renderer {
   private readonly selection = new Graphics();
   private readonly textures: Texture[];
   private readonly sprites: Sprite[] = [];
-  /** Screen-space size per settlement, so a marker stays readable at every zoom (UX §9.2). */
-  private readonly basePx = new Float32Array(200);
+  /** Tier per settlement sprite; marker size is derived from it at draw time (D-39). */
+  private readonly spriteTier = new Uint8Array(200);
   private readonly handlers: RendererHandlers;
   private terrain: Sprite | null = null;
   private meta: WorldMetaMsg | null = null;
@@ -62,6 +57,8 @@ export class Renderer {
   private dragging = false;
   private moved = 0;
   private pinchDistance = 0;
+  /** True once a second finger joins: a pinch must never end as a tap (D-40). */
+  private pinchUsed = false;
   private pinchMid: Point = { x: 0, y: 0 };
   private velX = 0;
   private velY = 0;
@@ -145,7 +142,7 @@ export class Renderer {
       sprite.texture = this.textures[meta.settlements.tier[i] ?? 0] ?? this.textures[0]!;
       sprite.position.set(((meta.settlements.x[i] ?? 0) + 0.5) * TILE_PX, ((meta.settlements.y[i] ?? 0) + 0.5) * TILE_PX);
       sprite.tint = civColor(meta.settlements.civ[i] ?? 0);
-      this.basePx[i] = markerPx(meta.settlements.tier[i] ?? 0);
+      this.spriteTier[i] = meta.settlements.tier[i] ?? 0;
     }
     for (let i = count; i < this.sprites.length; i++) {
       const s = this.sprites[i];
@@ -167,7 +164,7 @@ export class Renderer {
       const tint = civColor(civ);
       if (sprite.tint !== tint) sprite.tint = tint;
       // Population is encoded by scale, never by number on the map (UX §9.2)
-      this.basePx[i] = markerPx(tier);
+      this.spriteTier[i] = tier;
     }
     for (let i = count; i < this.sprites.length; i++) {
       const s = this.sprites[i];
@@ -186,9 +183,8 @@ export class Renderer {
     if (this.selectedId === null) return;
     const sprite = this.sprites[this.selectedId];
     if (!sprite || !sprite.visible) return;
-    const worldPerScreen = 1 / (TILE_PX * this.cam.zoom);
     this.selection
-      .circle(sprite.x, sprite.y, (this.basePx[this.selectedId] ?? 18) * worldPerScreen * 0.95)
+      .circle(sprite.x, sprite.y, selectionRadiusWorld(this.spriteTier[this.selectedId] ?? 0, this.cam.zoom))
       .stroke({ width: 2 / Math.max(0.15, this.cam.zoom), color: 0xece5d8, alpha: 0.95 });
   }
 
@@ -262,11 +258,10 @@ export class Renderer {
    * zoomed in.
    */
   private applyMarkerScale(): void {
-    const worldPerScreen = 1 / (TILE_PX * this.cam.zoom);
     for (let i = 0; i < this.sprites.length; i++) {
       const sprite = this.sprites[i];
       if (!sprite || !sprite.visible) continue;
-      const scale = (this.basePx[i] ?? 18) * worldPerScreen / 64;
+      const scale = markerWorldScale(this.spriteTier[i] ?? 0, this.cam.zoom);
       if (Math.abs(sprite.scale.x - scale) > 0.0001) sprite.scale.set(scale);
     }
   }
@@ -311,8 +306,11 @@ export class Renderer {
       this.velY = 0;
       if (this.pointers.size === 1) {
         this.dragging = true;
+        this.pinchUsed = false;
         this.startLongPress(e.offsetX, e.offsetY);
       } else if (this.pointers.size === 2) {
+        this.pinchUsed = true;
+        this.moved = 999;
         this.clearLongPress();
         const [a, b] = this.firstTwo();
         if (a && b) {
@@ -361,7 +359,7 @@ export class Renderer {
       if (this.pointers.size === 0) {
         this.dragging = false;
         this.clearLongPress();
-        if (wasSingle && this.moved <= 8) this.handleTap(e.offsetX, e.offsetY);
+        if (wasSingle && this.moved <= 8 && !this.pinchUsed) this.handleTap(e.offsetX, e.offsetY);
       }
     };
     canvas.addEventListener('pointerup', end);

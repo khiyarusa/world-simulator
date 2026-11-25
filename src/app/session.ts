@@ -64,6 +64,8 @@ export class Session implements ClientHandlers, ShellHandlers {
   private readonly debugEnabled = isDebugEnabled(location.search);
   private readonly frames = new FrameTimer();
   private busy = false;
+  private saving = false;
+  private recovered = false;
   private lastDay = 1;
 
   private constructor(shell: Shell, renderer: Renderer) {
@@ -106,6 +108,7 @@ export class Session implements ClientHandlers, ShellHandlers {
         this.doc = migrateDoc(loaded.doc);
         this.busy = true;
         this.lastSavedDay = this.doc.day;
+        this.recovered = loaded.recovered;
         this.client.load(loaded.shards);
         this.shell.toast(loaded.recovered ? 'Recovered the previous save generation' : `Loading ${this.doc.name}`);
       } else {
@@ -200,7 +203,11 @@ export class Session implements ClientHandlers, ShellHandlers {
       this.speed = 0;
       this.busy = false;
       this.lastSavedDay = meta.day;
-      this.shell.toast(`World ready · ${meta.settlements.x.length} settlements`);
+      this.shell.toast(
+        this.recovered
+          ? 'Recovered the previous save generation'
+          : `World ready · ${meta.settlements.x.length} settlements`,
+      );
       if (this.debugEnabled) this.renderDebug();
     });
   }
@@ -273,7 +280,8 @@ export class Session implements ClientHandlers, ShellHandlers {
   }
 
   async onSave(): Promise<void> {
-    await this.autosave();
+    // An explicit "Save now" must never be swallowed by the autosave throttle.
+    await this.autosave(true);
   }
 
   async onChipTap(): Promise<void> {
@@ -374,9 +382,10 @@ export class Session implements ClientHandlers, ShellHandlers {
 
   // ------------------------------------------------------------------ saving
 
-  private async autosave(): Promise<void> {
-    if (!this.doc || !this.meta || this.busy) return;
-    if (Date.now() - this.lastSaveReal < 5_000) return;
+  private async autosave(force = false): Promise<void> {
+    if (!this.doc || !this.meta || this.busy || this.saving) return;
+    if (!force && Date.now() - this.lastSaveReal < 2_000) return;
+    this.saving = true;
     try {
       const result = await this.client.save();
       this.doc = await saveWorld(
@@ -393,6 +402,8 @@ export class Session implements ClientHandlers, ShellHandlers {
       this.shell.toast('World saved');
     } catch (e) {
       this.shell.toast(`Save failed: ${asErrorMessage(e)}`);
+    } finally {
+      this.saving = false;
     }
   }
 
