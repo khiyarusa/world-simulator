@@ -187,7 +187,7 @@ test a WebView that differs from a real device anyway. Physical-device checks (Â
 `scripts/check-repo.mjs` enforces project-specific invariants that a general linter cannot:
 
 - every `docs/*.md` referenced from `AGENTS.md` or `docs/README.md` exists;
-- no `TODO`/`FIXME` in `docs/` (design docs must be decided, not parked);
+- no parked-work markers in `docs/` (design docs must be decided, not parked);
 - every installed skill directory has `SKILL.md` and the vendor `LICENSE`/`NOTICE` are present;
 - `assets/manifest.json` (when it exists) covers every file under `assets/`;
 - no `Math.random`, `Date.now`, `performance.now`, `crypto.` in `src/sim/**`;

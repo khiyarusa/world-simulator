@@ -62,7 +62,6 @@ export class Session implements ClientHandlers, ShellHandlers {
   private speed: Speed = 0;
   private readonly debugEnabled = isDebugEnabled(location.search);
   private readonly frames = new FrameTimer();
-  private debugTimer: number | null = null;
   private busy = false;
   private lastDay = 1;
 
@@ -71,9 +70,9 @@ export class Session implements ClientHandlers, ShellHandlers {
     this.renderer = renderer;
     this.labels = new Labels(shell.labelsHost);
     this.client = new WorkerClient(this);
-    if (this.debugEnabled) {
-      this.debugTimer = window.setInterval(() => this.renderDebug(), 500);
-    }
+    if (this.debugEnabled) window.setInterval(() => this.renderDebug(), 500);
+    // Real-time autosave (the other trigger is 90 simulated days, in onDelta).
+    window.setInterval(() => void this.autosave(), AUTOSAVE_REAL_MS);
   }
 
   static async create(host: HTMLElement): Promise<Session> {
@@ -127,7 +126,7 @@ export class Session implements ClientHandlers, ShellHandlers {
       return;
     }
     this.busy = true;
-    this.shell.setProgress('start', 2);
+    this.shell.setProgress(2);
     this.doc = newWorldDoc(
       DEFAULT_WORLD_ID,
       `World ${seedToText(recipe.seed).slice(0, 4)}`,
@@ -167,8 +166,8 @@ export class Session implements ClientHandlers, ShellHandlers {
     // Worker is up; nothing to request until the player picks a world.
   }
 
-  onProgress(stage: string, pct: number): void {
-    this.shell.setProgress(stage, pct);
+  onProgress(_stage: string, pct: number): void {
+    this.shell.setProgress(pct);
   }
 
   onMeta(meta: WorldMetaMsg): void {

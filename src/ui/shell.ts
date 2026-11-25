@@ -190,7 +190,7 @@ export class Shell {
     this.bootDone();
   }
 
-  setProgress(_stage: string, pct: number): void {
+  setProgress(pct: number): void {
     this.progressBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
   }
 

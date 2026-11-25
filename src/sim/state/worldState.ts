@@ -1,5 +1,6 @@
 import type { Seed } from '../../core/seed.ts';
 import type { RngState } from '../../core/rng.ts';
+import { TERRAIN_KEYS } from '../../core/gridTypes.ts';
 import type { TerrainArrays, TerrainKey } from '../../core/gridTypes.ts';
 
 export type Preset = 'small' | 'medium' | 'large';

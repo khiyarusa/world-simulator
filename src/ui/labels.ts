@@ -18,13 +18,11 @@ export interface LabelItem {
 const POOL_SIZE = 28;
 
 export class Labels {
-  private readonly host: HTMLElement;
   private readonly nodes: HTMLDivElement[] = [];
   private items: readonly LabelItem[] = [];
   private visible = true;
 
   constructor(host: HTMLElement) {
-    this.host = host;
     for (let i = 0; i < POOL_SIZE; i++) {
       const node = document.createElement('div');
       node.className = 'settlement-label';
