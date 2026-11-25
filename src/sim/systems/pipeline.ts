@@ -39,7 +39,7 @@ export const DAILY_STAGES: ReadonlyArray<readonly [string, Stage]> = [
   ['craft', () => { /* crafting shares runProduction for the same reason */ }],
   ['consumption', (c) => runConsumption(c.state, c.day)],
   ['health', () => { /* health is updated by consumption from the actual shortfalls */ }],
-  ['demographics', (c) => { if (c.isMonthEnd) runDemographics(c.state); }],
+  ['demographics', () => { /* demography runs yearly, with ageing (see runDay) */ }],
   ['stability', () => { /* stability is updated by consumption from the actual shortfalls */ }],
   ['migration', (c) => { if (c.isMonthEnd) runMigration(c.state, c.day); }],
   ['trade', () => { /* Stage 3.2: routes and tariffs (not implemented yet) */ }],
@@ -76,7 +76,10 @@ export function runDay(state: WorldState): void {
   for (let i = 0; i < DAILY_STAGES.length; i++) {
     DAILY_STAGES[i]![1](ctx);
   }
-  if (ctx.isYearEnd) runAgeing(state);
+  if (ctx.isYearEnd) {
+    runDemographics(state);
+    runAgeing(state);
+  }
   state.day = day;
   state.counters.ticks += 1;
 }

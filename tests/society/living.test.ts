@@ -117,7 +117,20 @@ describe('living world', () => {
       bytes: encoded.byteLength,
       payload: encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) as ArrayBuffer,
     };
-    const migrated = await deserializeWorld(shards.map((s) => (s.name === 'meta' ? v1Meta : s)));
+
+    // A genuine v1 generation: v1 wrote schemaVersion 1 into every binary header. The v1 and v2 binary
+    // layouts are identical by design (only the meta society block is new), so rewriting the version
+    // word produces exactly the file v1 code would have written.
+    const asV1 = (shard: typeof shards[number]) => {
+      if (shard.compressed) return shard;
+      const bytes = new Uint8Array(shard.payload.slice(0));
+      new DataView(bytes.buffer).setUint16(4, 1, true);
+      return { ...shard, crc32: crc32(bytes), payload: bytes.buffer as ArrayBuffer };
+    };
+
+    const migrated = await deserializeWorld(
+      shards.map((s) => (s.name === 'meta' ? v1Meta : asV1(s))),
+    );
     expect(migrated.schemaVersion).toBe(1);
     expect(migrated.state.society.cohorts.length).toBeGreaterThan(0);
     let legacy = 0;

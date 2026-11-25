@@ -255,7 +255,8 @@ export function runConsumption(world: WorldState, day: number): void {
 export function runDemographics(world: WorldState): void {
   const soc = world.society;
   const s = world.settlements;
-  const months = 12;
+  // annual cadence: at monthly cadence a 100-person settlement floors every birth to zero
+  const months = 1;
 
   for (let i = 0; i < s.count; i++) {
     if (!isAlive(world, i)) continue;
