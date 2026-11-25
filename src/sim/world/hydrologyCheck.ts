@@ -129,64 +129,65 @@ export function auditHydrology(
     return TERMINAL.UNKNOWN;
   };
 
-  for (let start = 0; start < n; start++) {
-    if ((hydro.riverId[start] ?? 0) === 0 || memo[start] !== 0) continue;
-
-    let sp = 0;
+  /** Walk downstream until a terminal is known; memoise the result for every cell on the path. */
+  const resolveTerminal = (start: number): { kind: number; steps: number } => {
     let cur = start;
     let steps = 0;
-    let result: number = TERMINAL.UNKNOWN;
+    let sp = 0;
+    let kind: number;
 
     for (;;) {
       if (memo[cur] !== 0) {
-        result = memo[cur]!;
+        kind = memo[cur]!;
         break;
       }
       const known = terminalOf(cur);
       if (known !== TERMINAL.UNKNOWN) {
         memo[cur] = known;
-        result = known;
+        kind = known;
         break;
       }
       const dir = hydro.flowDir[cur] ?? 8;
       if (dir === 8) {
         memo[cur] = TERMINAL.SINK;
-        result = TERMINAL.SINK;
+        kind = TERMINAL.SINK;
         break;
       }
       if (sp >= n - 1) {
-        result = TERMINAL.CYCLE;
+        kind = TERMINAL.CYCLE;
         break;
       }
       stack[sp] = cur;
       sp++;
       steps++;
       if (steps > n) {
-        result = TERMINAL.CYCLE;
+        kind = TERMINAL.CYCLE;
         break;
       }
       const next = downstream(cur, dir, width, height);
       if (next < 0) {
-        result = TERMINAL.CYCLE;
+        kind = TERMINAL.CYCLE;
         break;
       }
       cur = next;
     }
 
-    if (result === TERMINAL.CYCLE) {
+    if (kind !== TERMINAL.CYCLE) {
+      for (let k = sp - 1; k >= 0; k--) memo[stack[k]!] = kind;
+    }
+    return { kind, steps };
+  };
+
+  for (let start = 0; start < n; start++) {
+    if ((hydro.riverId[start] ?? 0) === 0 || memo[start] !== 0) continue;
+    const { kind, steps } = resolveTerminal(start);
+    if (steps > maxRiverPath) maxRiverPath = steps;
+    if (kind === TERMINAL.CYCLE) {
       cycles++;
       stranded++;
-    }
-    for (let k = sp - 1; k >= 0; k--) {
-      const cell = stack[k]!;
-      if (result === TERMINAL.CYCLE) break;
-      memo[cell] = result;
-    }
-
-    if (steps > maxRiverPath) maxRiverPath = steps;
-    if (result === TERMINAL.SEA) riversToSea++;
-    else if (result === TERMINAL.LAKE) riversToLake++;
-    else if (result === TERMINAL.SINK) riversToSink++;
+    } else if (kind === TERMINAL.SEA) riversToSea++;
+    else if (kind === TERMINAL.LAKE) riversToLake++;
+    else if (kind === TERMINAL.SINK) riversToSink++;
   }
 
   let riverCells = 0;

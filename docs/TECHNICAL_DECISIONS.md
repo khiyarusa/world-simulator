@@ -452,3 +452,96 @@ from the design text; the design documents named in each entry were corrected in
   into empty space.
 - **Trade-off:** "0.25×" in the UX document is a nominal floor; the real floor is device- and
   world-size-dependent. Corrected in the UX doc.
+
+---
+
+## 7. Stage 2.1 hardening decisions
+
+These were forced by defects found in the Stage 2 code (see `docs/STAGE_2_1_HARDENING.md`). Each one
+names the invariant it protects, because the next agent will be tempted to "simplify" them back.
+
+### D-32 — Preset identity is numeric, never a string property
+
+- **Decision:** `PRESET_IDS = { small: 1, medium: 2, large: 3 }`; recipe hashing uses these ids and a
+  domain tag, in a frozen field order.
+- **Why:** the previous hash used `preset.length`, and `"small"`/`"large"` both have five characters, so
+  two presets shared one identity. A hash derived from a display string is a latent collision by
+  construction.
+- **Trade-off:** preset ids are now part of the persisted identity and must never be renumbered; adding a
+  preset means adding an id, not reordering the map.
+
+### D-33 — RNG state is captured where generation leaves it
+
+- **Decision:** after generation, the TERRAIN and SPAWN streams store their current state; all other
+  streams keep their seeded state because nothing consumed them.
+- **Why:** storing freshly seeded states meant a load restarted consumed streams, so a resumed world
+  diverged from an uninterrupted one. No visible difference existed in Stage 2 only because no tick
+  system draws random numbers yet.
+- **Trade-off:** generation now must expose the streams it used. Any future generator stage must add its
+  stream to the capture list, or the invariant silently degrades — that is why the continuation test
+  compares 32 future draws, not just the stored words.
+
+### D-34 — Checksum contract v2, decoupled from the golden fixture
+
+- **Decision:** `worldChecksum` covers recipe identity, all RNG state, settlement `foundedDay` and the
+  counters, under a domain tag (`CSM2`). The golden fixture pins **grid content** (`gridsChecksum`) and
+  land fraction, not `worldChecksum`.
+- **Why:** (a) the checksum could not detect corruption in exactly the fields continuation depends on;
+  (b) using one hash for both purposes means every integrity improvement looks like a world-content
+  change, which trains reviewers to regenerate fixtures — the opposite of a regression test.
+- **Trade-off:** two hashes to reason about, each with one job and one test.
+
+### D-35 — Hydrology is validated against the contract it implements
+
+- **Decision:** `auditHydrology()` proves: direction 0–8; strict descent on the filled surface; every
+  river terminating within N steps; every sink a local minimum; and it reports how rivers actually end
+  (sea / lake / sink).
+- **Why:** "river cells are on land" is true of a river drawn anywhere. On a filled surface a flat
+  plateau legitimately has no downhill neighbour, so "river must reach the sea" is not the true
+  contract; "water stops only where it cannot fall" is.
+- **Trade-off:** the audit is O(n) and runs in tests and tooling, not in the load path; a `hydro` tool
+  mode reports measured terminal counts in CI so the claim is evidence, not assertion.
+
+### D-36 — A generation is valid only with the complete shard set
+
+- **Decision:** `core/saveSchema.ts` owns `SHARD_NAMES`; `verifyGeneration` rejects missing, duplicate,
+  empty and wrong-length shards before any parse; the decoder re-checks the same set and exact payload
+  lengths.
+- **Why:** CRC-validating the shards that happen to exist declared a missing-terrain generation
+  "valid", which suppressed the fallback that would have saved the world.
+- **Trade-off:** adding a shard in Stage 3 means updating one list, which is the desired coupling.
+
+### D-37 — Save = synchronous capture, asynchronous compression
+
+- **Decision:** `captureWorld()` copies every payload and computes the checksum synchronously between
+  ticks; `encodeSnapshot()` compresses the frozen bytes. No `await` may appear in the capture.
+- **Why:** the encoder awaited between shards, so a tick could run mid-save and produce a file whose
+  terrain and metadata were different days, with a checksum of a third state — all individually
+  CRC-valid.
+- **Trade-off:** a save briefly holds a second copy of the world (~0.5 MB at Medium), and the worker is
+  busy for the duration of the copy. Both are bounded and far cheaper than an inconsistent save.
+
+### D-38 — Recovery repoints and deletes, it does not "skip"
+
+- **Decision:** after falling back to an older generation, `resetToGeneration()` updates the metadata to
+  that generation, zeroes `prevGen`, and deletes every other generation in one transaction.
+- **Why:** leaving the damaged generation on disk meant the next save recorded it as `prevGen`, promoting
+  corruption to the only backup.
+- **Trade-off:** the damaged generation is not kept for forensics. A future "export damaged save" can
+  copy it before deletion; correctness of the next save comes first.
+
+### D-39 — Marker geometry applies the camera zoom exactly once
+
+- **Decision:** `src/render/markerGeometry.ts`: screen size = `64 · scale · zoom`, so
+  `scale = px / (64 · zoom)`. The module is Pixi-free and unit-tested.
+- **Why:** the previous formula also divided by `TILE_PX`, applying the tile constant twice and rendering
+  every marker at ~0.5 px. Visual inspection at one zoom level would not have caught it; the maths does.
+- **Trade-off:** marker size is deliberately screen-constant, so markers do not grow when zooming in.
+  That is the intended cartographic behaviour (a symbol, not a building).
+
+### D-40 — A gesture is either a tap or a pinch, never both
+
+- **Decision:** any second pointer marks the gesture as a pinch, invalidates accumulated movement, and
+  suppresses the tap path for the whole gesture.
+- **Why:** pinch with little travel ended in a click that selected an arbitrary settlement.
+- **Trade-off:** a deliberate two-finger tap does nothing. Acceptable: nothing in the UI requires it.

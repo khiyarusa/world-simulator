@@ -109,9 +109,9 @@ describe('save generations', () => {
   it('keeps the current and the previous generation after two saves', async () => {
     const store = new MemoryWorldStore();
     const state = world();
-    let doc = newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small');
-    doc = await commitOnce(store, doc, state);
-    doc = await commitOnce(store, doc, state);
+    const base = newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small');
+    const first = await commitOnce(store, base, state);
+    const doc = await commitOnce(store, first, state);
     expect(doc.currentGen).toBe(2);
     expect(doc.prevGen).toBe(1);
     expect(store.gensOf(WORLD_ID)).toEqual([1, 2]);
@@ -142,9 +142,9 @@ describe('save generations', () => {
   it('recovers from a damaged current generation and makes the backup current', async () => {
     const store = new MemoryWorldStore();
     const state = world();
-    let doc = newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small');
-    doc = await commitOnce(store, doc, state);
-    doc = await commitOnce(store, doc, state);
+    const base = newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small');
+    const first = await commitOnce(store, base, state);
+    const doc = await commitOnce(store, first, state);
     expect(store.gensOf(WORLD_ID)).toEqual([1, 2]);
 
     // damage the current generation exactly as a bad write would
@@ -167,16 +167,15 @@ describe('save generations', () => {
   it('survives save-after-recovery and keeps the recovered world loadable', async () => {
     const store = new MemoryWorldStore();
     const state = world();
-    let doc = newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small');
-    doc = await commitOnce(store, doc, state);
-    doc = await commitOnce(store, doc, state);
+    const base = newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small');
+    const first = await commitOnce(store, base, state);
+    await commitOnce(store, first, state);
 
     store.gens.get(WORLD_ID)!.set(2, []);
     const recovered = await loadWorld(store, WORLD_ID);
     expect(recovered!.recovered).toBe(true);
-    doc = recovered!.doc;
 
-    doc = await commitOnce(store, doc, state);
+    const doc = await commitOnce(store, recovered!.doc, state);
     expect(doc.currentGen).toBe(2);
     expect(doc.prevGen).toBe(1);
     expect(store.gensOf(WORLD_ID)).toEqual([1, 2]);
@@ -189,9 +188,9 @@ describe('save generations', () => {
   it('refuses to load when every generation is damaged', async () => {
     const store = new MemoryWorldStore();
     const state = world();
-    let doc = newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small');
-    doc = await commitOnce(store, doc, state);
-    doc = await commitOnce(store, doc, state);
+    const base = newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small');
+    const first = await commitOnce(store, base, state);
+    await commitOnce(store, first, state);
     store.gens.get(WORLD_ID)!.set(1, []);
     store.gens.get(WORLD_ID)!.set(2, []);
     await expectSimError(loadWorld(store, WORLD_ID), 'SAVE_CORRUPT');
@@ -208,8 +207,8 @@ describe('save generations', () => {
   it('prunes old generations but never the previous one', async () => {
     const store = new MemoryWorldStore();
     const state = world();
-    let doc = newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small');
-    for (let i = 0; i < 4; i++) doc = await commitOnce(store, doc, state);
+    let doc = await commitOnce(store, newWorldDoc(WORLD_ID, 'Test', '00000001-00000002', 'small'), state);
+    for (let i = 0; i < 3; i++) doc = await commitOnce(store, doc, state);
     // each save keeps exactly current + previous
     expect(store.gensOf(WORLD_ID)).toEqual([3, 4]);
     expect(store.worlds.get(WORLD_ID)?.prevGen).toBe(3);
