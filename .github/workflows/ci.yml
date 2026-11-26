@@ -15,7 +15,9 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest          # public repo: 4 vCPU / 16 GB
-    timeout-minutes: 30
+    # Stage 5 adds 5 behaviour tests and a mature-world visual suite on top of determinism and the
+    # production build. 30 minutes was the Stage 4 ceiling; 60 keeps that headroom honest.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -83,7 +85,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: visual-qa-${{ github.sha }}
-          path: docs/qa/stage4/
+          path: docs/qa/stage5/
           retention-days: 30
           if-no-files-found: warn
 

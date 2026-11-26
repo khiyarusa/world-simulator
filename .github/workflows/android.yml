@@ -44,14 +44,19 @@ jobs:
       - name: Assemble debug APK
         run: cd android && ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
+      - name: Assemble debug AAB (release-readiness artifact)
+        run: cd android && ./gradlew :app:bundleDebug --no-daemon --stacktrace
+
       - name: APK size budget (25 MB)
         run: node scripts/check-apk-size.mjs android/app/build/outputs/apk/debug/app-debug.apk 25
 
-      - name: Upload APK artifact
+      - name: Upload APK and AAB artifacts
         uses: actions/upload-artifact@v4
         with:
           name: world-simulator-debug-${{ github.sha }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/bundle/debug/app-debug.aab
           retention-days: 14
 
       - name: Upload gradle report on failure

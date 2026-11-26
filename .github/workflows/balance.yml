@@ -1,7 +1,8 @@
 name: balance
 
-# The Stage 3 acceptance harness: 20 deterministic seeds x 400 simulated years through the real
-# pipeline. It runs on GitHub Actions because the development machine must not do this work.
+# The acceptance harness: 20 deterministic seeds x 400 simulated years through the real pipeline,
+# then one 500-year Large-preset run for the Stage 5 memory/leak gate. GitHub Actions is the only
+# machine that does this work; the 2-vCPU development box must not.
 on:
   push:
     branches: [main]
@@ -20,7 +21,7 @@ permissions:
 jobs:
   balance:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,9 +38,16 @@ jobs:
             --preset=medium --out=balance.json
       - name: Acceptance summary (population band, failures)
         run: node scripts/assert-balance.mjs balance.json
+      - name: Large-world 500-year stress (S5-A3)
+        run: |
+          node --expose-gc dist-tools/tools.js balance \
+            --seeds=1 --years=500 --preset=large --out=stress.json
+          node scripts/assert-stress.mjs stress.json 1536
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: balance-${{ github.sha }}
-          path: balance.json
+          path: |
+            balance.json
+            stress.json
           retention-days: 30
