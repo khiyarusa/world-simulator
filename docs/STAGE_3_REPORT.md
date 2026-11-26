@@ -1,7 +1,6 @@
 # STAGE 3 REPORT — LIVING WORLD (acceptance evidence)
 
-**Code measured:** `947a5d2` (the only later code change is the event-ring budget, which alters no
-simulation result). **Branch:** `main` · **Date:** 2026-11-26.
+**Code measured:** `1cd93a9` (final event-ring budget; the balance run measured this exact tree). **Branch:** `main` · **Date:** 2026-11-26.
 **Verdict: all eight Stage 3 software acceptance gates are evidenced. Stage 3 is not signed off as
 complete because the physical Galaxy A23 capture required by the roadmap exit condition has not been
 performed in this environment.**
@@ -91,8 +90,8 @@ The JSON artifact is the evidence for every number in this report.
 | Wars declared / ended | 471 sampled declarations, all four gate values reproduced |
 | Routes | 400 retained at year 400; 1.6k–3.1k opened over 400 years |
 | Technology | all 12 nodes discovered in most seeds |
-| Tick p95 | **0.079 ms median, 0.096 ms max** at 200 settlements / 12 civs |
-| Raw save at year 200 | **1,164 KiB median, 1,172 KiB max** |
+| Tick p95 | **0.077 ms median, 0.097 ms max** at 200 settlements / 12 civs |
+| Raw save at year 200 | **1,149 KiB median, 1,157 KiB max** (1,184,768 bytes max) |
 | Save/encode time | 48–63 ms on the CI runner (device load is pending) |
 | Runtime errors | 0 |
 
@@ -118,8 +117,8 @@ no-input run cannot contain player input. Three arc types therefore appear in �
 | **S3-A4** every severity-4+ event has a cause link or root | **PASS** | harness checks every event it observed: 0 failures in 20 seeds; explicit `-1` roots persisted |
 | **S3-A5** sample 20 wars, each reproduces four gate values | **PASS** | 471 declarations sampled; strength/grievance/capacity/utility all persisted and ≥ thresholds |
 | **S3-A6** fixed vs moving camera identical | **PASS** | `tests/determinism/lod.test.ts`: identical checksum, population and event stream with a panning/zooming camera |
-| **S3-A7** save ≤1.2 MB raw; load ≤1 s device | **PASS (size) / PENDING (device load)** | 1,164 KiB median, 1,172 KiB max at year 200; encode 48–63 ms; A23 load not measured |
-| **S3-A8** p95 ≤3 ms full pipeline | **PASS** | 0.079 ms median, 0.096 ms max at 200 settlements / 12 civs, CI runner |
+| **S3-A7** save ≤1.2 MB raw; load ≤1 s device | **PASS (size) / PENDING (device load)** | 1,149 KiB median, 1,157 KiB max at year 200; encode 51–61 ms; A23 load not measured |
+| **S3-A8** p95 ≤3 ms full pipeline | **PASS** | 0.077 ms median, 0.097 ms max at 200 settlements / 12 civs, CI runner |
 
 Supporting gates: 95 tests in 13 files (unit, invariant, determinism, save/migration, LOD A/B,
 persistence), TypeScript strict, ESLint, repo gates, browser E2E, Android build, performance workflow.
