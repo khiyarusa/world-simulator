@@ -14,7 +14,7 @@ export const TILE_PX = 32;
 export const MARKER_TEXTURE_PX = 64;
 
 /** Marker size in screen pixels per settlement tier (camp → metropolis). */
-const MARKER_PX: readonly number[] = [15, 19, 24, 30, 38];
+const MARKER_PX: readonly number[] = [18, 23, 29, 37, 46];
 
 export function markerPx(tier: number): number {
   return MARKER_PX[tier] ?? MARKER_PX[0]!;

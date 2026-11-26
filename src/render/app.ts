@@ -8,9 +8,10 @@
 import { Application, CanvasSource, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import type { MirrorDelta, WorldMetaMsg } from '../worker/protocol.ts';
 import { Camera, type Point } from './camera.ts';
+import { MapInput } from './input.ts';
 import { TILE_PX, markerWorldScale, selectionRadiusWorld } from './markerGeometry.ts';
 import { civColor } from './palette.ts';
-import { createSettlementTextures, RUINED_TEXTURE_OFFSET } from './settlementSprites.ts';
+import { createSettlementTextures, DOT_TEXTURE, RUINED_TEXTURE_OFFSET } from './settlementSprites.ts';
 import { LayerView, type LayerViewMeta } from './layers.ts';
 import type { LayerData } from '../worker/queries.ts';
 import type { BakedTerrain } from './terrainBake.ts';
@@ -34,12 +35,6 @@ export interface RendererHandlers {
   onFrame?(ms: number): void;
 }
 
-interface PointerState {
-  id: number;
-  x: number;
-  y: number;
-}
-
 export class Renderer {
   readonly app: Application;
   readonly cam = new Camera();
@@ -54,24 +49,21 @@ export class Renderer {
   private readonly spriteTier = new Uint8Array(200);
   /** Stage 4 visual state bits per sprite. */
   private readonly spriteState = new Uint8Array(200);
+  private readonly capital = new Uint8Array(200);
+  private readonly spritePop = new Int32Array(200);
+  private count = 0;
+  private lastLodZoom = -1;
+  private destroyed = false;
   private readonly handlers: RendererHandlers;
   private terrain: Sprite | null = null;
   private meta: WorldMetaMsg | null = null;
   private selectedId: number | null = null;
+  private lowPower = false;
+  private reducedMotion = false;
+  private lastSelectionZoom = 0;
+  private selectionDirty = true;
 
-  private readonly pointers = new Map<number, PointerState>();
-  private dragging = false;
-  private moved = 0;
-  private pinchDistance = 0;
-  /** True once a second finger joins: a pinch must never end as a tap (D-40). */
-  private pinchUsed = false;
-  private pinchMid: Point = { x: 0, y: 0 };
-  private velX = 0;
-  private velY = 0;
-  private lastMoveAt = 0;
-  private lastTapAt = 0;
-  private lastTap: Point = { x: 0, y: 0 };
-  private longPressTimer: number | null = null;
+  private readonly input: MapInput;
 
   private constructor(app: Application, handlers: RendererHandlers) {
     this.app = app;
@@ -79,12 +71,13 @@ export class Renderer {
     this.textures = createSettlementTextures();
     this.layers = new LayerView();
     this.root.addChild(this.layers.rasterContainer, this.settlementLayer, this.stateMarks, this.layers.vector, this.selection);
+    this.input = new MapInput(app.canvas, this.cam, handlers);
   }
 
   static async create(host: HTMLElement, handlers: RendererHandlers): Promise<Renderer> {
     const app = new Application();
     await app.init({
-      background: '#1a2b35',
+      backgroundAlpha: 0,
       resizeTo: host,
       antialias: false,
       preference: 'webgl',
@@ -96,7 +89,6 @@ export class Renderer {
 
     const renderer = new Renderer(app, handlers);
     app.stage.addChild(renderer.root);
-    renderer.bindInput(app.canvas);
     app.renderer.on('resize', (w: number, h: number) => {
       renderer.cam.setViewport(w, h);
       renderer.cam.clampTarget();
@@ -132,11 +124,22 @@ export class Renderer {
     this.emitView();
   }
 
+  setSettlementLayout(meta: WorldMetaMsg): void {
+    this.meta = meta;
+    this.rebuildSettlements(meta);
+  }
+
   private rebuildSettlements(meta: WorldMetaMsg): void {
     for (const s of this.sprites) {
       s.visible = false;
     }
+    this.capital.fill(0);
+    for (let c = 0; c < meta.civs.capital.length; c++) {
+      const at = meta.civs.capital[c] ?? 0;
+      if (at < this.capital.length) this.capital[at] = 1;
+    }
     const count = Math.min(meta.settlements.x.length, 200);
+    this.count = count;
     for (let i = 0; i < count; i++) {
       let sprite = this.sprites[i];
       if (!sprite) {
@@ -150,11 +153,13 @@ export class Renderer {
       sprite.position.set(((meta.settlements.x[i] ?? 0) + 0.5) * TILE_PX, ((meta.settlements.y[i] ?? 0) + 0.5) * TILE_PX);
       sprite.tint = civColor(meta.settlements.civ[i] ?? 0);
       this.spriteTier[i] = meta.settlements.tier[i] ?? 0;
+      this.spritePop[i] = meta.settlements.pop[i] ?? 0;
     }
     for (let i = count; i < this.sprites.length; i++) {
       const s = this.sprites[i];
       if (s) s.visible = false;
     }
+    this.applyLod();
     this.drawStateMarks();
   }
 
@@ -177,11 +182,13 @@ export class Renderer {
       // Population is encoded by scale, never by number on the map (UX §9.2)
       this.spriteTier[i] = tier;
       this.spriteState[i] = state;
+      this.spritePop[i] = delta.pop[i] ?? 0;
     }
     for (let i = count; i < this.sprites.length; i++) {
       const s = this.sprites[i];
       if (s) s.visible = false;
     }
+    this.applyLod();
     this.drawStateMarks();
     this.drawSelection();
   }
@@ -190,31 +197,76 @@ export class Renderer {
   private drawStateMarks(): void {
     const g = this.stateMarks;
     g.clear();
+    const s = 1 / Math.max(0.03, this.cam.zoom);
     for (let i = 0; i < this.sprites.length; i++) {
       const sprite = this.sprites[i];
       if (!sprite || !sprite.visible) continue;
       const state = this.spriteState[i] ?? 0;
-      if (state === 0) continue;
+      if (state === 0 && this.capital[i] === 0) continue;
       const x = sprite.x;
       const y = sprite.y;
+      if (this.capital[i] !== 0) {
+        g.circle(x, y, 9 * s).stroke({ width: 1.1 * s, color: 0xd8c07a, alpha: 0.95 });
+        g.poly([x - 3 * s, y - 12 * s, x, y - 17 * s, x + 3 * s, y - 12 * s]).fill({ color: 0xd8c07a, alpha: 0.98 });
+      }
       if ((state & 16) !== 0) {
-        // occupied: a small banner above the glyph
-        g.poly([x - 2.2, y - 5.5, x + 2.2, y - 5.5, x, y - 2.6]).fill({ color: 0xb8503c, alpha: 0.95 });
+        g.poly([x - 3 * s, y - 8 * s, x + 3 * s, y - 8 * s, x, y - 3 * s]).fill({ color: 0xb8503c, alpha: 0.98 });
       }
       if ((state & 2) !== 0) {
-        g.circle(x + 2.6, y - 2.2, 1.25).fill({ color: 0xc08a3e, alpha: 0.95 });
+        g.circle(x + 4 * s, y - 3 * s, 1.9 * s).fill({ color: 0xc08a3e, alpha: 0.98 });
       } else if ((state & 32) !== 0) {
-        g.circle(x + 2.6, y - 2.2, 1.05).fill({ color: 0xd8c07a, alpha: 0.95 });
+        g.circle(x + 4 * s, y - 3 * s, 1.6 * s).fill({ color: 0xd8c07a, alpha: 0.98 });
       }
       if ((state & 8) !== 0) {
-        // blight/damage: a rust ring on the other side, distinct in shape from the starvation dot
-        g.circle(x - 2.8, y - 2.2, 1.2).stroke({ width: 0.7, color: 0x9a5a3a, alpha: 0.95 });
+        g.circle(x - 4 * s, y - 3 * s, 1.9 * s).stroke({ width: 1 * s, color: 0x9a5a3a, alpha: 0.98 });
       }
     }
   }
 
+  /** Screen-space level of detail: dots at the world overview, full glyphs when close. */
+  private applyLod(): void {
+    const zoom = this.cam.zoom;
+    const overview = zoom < 0.105;
+    const regional = zoom < 0.28;
+    const s = 1 / Math.max(0.03, zoom);
+    for (let i = 0; i < this.count; i++) {
+      const sprite = this.sprites[i];
+      if (!sprite) continue;
+      const tier = this.spriteTier[i] ?? 0;
+      const capital = this.capital[i] !== 0;
+      let visible = true;
+      if (overview) {
+        sprite.texture = this.textures[DOT_TEXTURE]!;
+        const dotPx = 3.2 + tier * 1.05 + (capital ? 2.4 : 0);
+        sprite.scale.set(dotPx * s / 64);
+      } else if (regional) {
+        visible = capital || tier >= 2;
+        sprite.texture = this.textures[tier + ((this.spriteState[i] ?? 0) & 1 ? RUINED_TEXTURE_OFFSET : 0)]!;
+        sprite.scale.set(markerWorldScale(tier, zoom) * (capital ? 1.08 : 1));
+      } else {
+        sprite.texture = this.textures[tier + ((this.spriteState[i] ?? 0) & 1 ? RUINED_TEXTURE_OFFSET : 0)]!;
+        sprite.scale.set(markerWorldScale(tier, zoom) * (capital ? 1.08 : 1));
+      }
+      sprite.visible = visible;
+    }
+    for (let i = this.count; i < this.sprites.length; i++) {
+      const sprite = this.sprites[i];
+      if (sprite) sprite.visible = false;
+    }
+    this.lastLodZoom = zoom;
+  }
+
+  setLowPower(on: boolean): void {
+    this.lowPower = on;
+  }
+
+  setReducedMotion(on: boolean): void {
+    this.reducedMotion = on;
+  }
+
   setSelected(id: number | null): void {
     this.selectedId = id;
+    this.selectionDirty = true;
     this.drawSelection();
   }
 
@@ -251,18 +303,41 @@ export class Renderer {
     canvas.height = size;
     const ctx = canvas.getContext('2d');
     if (!ctx) return '';
-    ctx.drawImage(this.app.canvas, 0, 0, size, size);
-    return canvas.toDataURL('image/jpeg', 0.7);
+    // The Pixi canvas is transparent outside the atlas; crop a centred square and fill the sea so
+    // the JPEG thumbnail has no black letterbox bars.
+    ctx.fillStyle = '#14262f';
+    ctx.fillRect(0, 0, size, size);
+    const source = this.app.canvas;
+    const side = Math.min(source.width, source.height);
+    const sx = Math.floor((source.width - side) / 2);
+    const sy = Math.floor((source.height - side) / 2);
+    ctx.drawImage(source, sx, sy, side, side, 0, 0, size, size);
+    return canvas.toDataURL('image/jpeg', 0.72);
   }
 
   private drawSelection(): void {
     this.selection.clear();
+    this.lastSelectionZoom = this.cam.zoom;
+    this.selectionDirty = false;
     if (this.selectedId === null) return;
     const sprite = this.sprites[this.selectedId];
     if (!sprite || !sprite.visible) return;
+    const r = selectionRadiusWorld(this.spriteTier[this.selectedId] ?? 0, this.cam.zoom);
+    const w = 1.8 / Math.max(0.15, this.cam.zoom);
     this.selection
-      .circle(sprite.x, sprite.y, selectionRadiusWorld(this.spriteTier[this.selectedId] ?? 0, this.cam.zoom))
-      .stroke({ width: 2 / Math.max(0.15, this.cam.zoom), color: 0xece5d8, alpha: 0.95 });
+      .circle(sprite.x, sprite.y, r)
+      .stroke({ width: w, color: 0xece5d8, alpha: 0.98 });
+    this.selection
+      .circle(sprite.x, sprite.y, r + 4 / Math.max(0.15, this.cam.zoom))
+      .stroke({ width: w * 0.45, color: 0xc8a05a, alpha: 0.7 });
+    // four small ticks make the selection legible without depending on colour alone
+    const tick = (r + 7 / Math.max(0.15, this.cam.zoom));
+    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+      this.selection
+        .moveTo(sprite.x + dx * tick, sprite.y + dy * tick)
+        .lineTo(sprite.x + dx * (tick + 4 / Math.max(0.15, this.cam.zoom)), sprite.y + dy * (tick + 4 / Math.max(0.15, this.cam.zoom)))
+        .stroke({ width: w * 0.8, color: 0xece5d8, alpha: 0.9 });
+    }
   }
 
   /**
@@ -322,10 +397,16 @@ export class Renderer {
 
   private frame(dt: number): void {
     this.handlers.onFrame?.(dt * 1000);
-    this.applyInertia(dt);
+    this.input.applyInertia(dt);
     this.cam.update(dt);
     this.applyTransform();
-    this.applyMarkerScale();
+    if (Math.abs(this.cam.zoom - this.lastLodZoom) > this.lastLodZoom * 0.01 || this.lastLodZoom < 0) this.applyLod();
+    if (this.selectedId !== null) {
+      if (this.reducedMotion || this.lowPower) this.selection.alpha = 1;
+      else this.selection.alpha = 0.78 + 0.22 * Math.sin(performance.now() / 420);
+    } else {
+      this.selection.alpha = 1;
+    }
     if (this.cam.isSettled()) this.emitView();
   }
 
@@ -347,7 +428,12 @@ export class Renderer {
     this.root.position.set(-this.cam.x * this.cam.zoom, -this.cam.y * this.cam.zoom);
     this.root.scale.set(this.cam.zoom);
     this.layers.setZoom(this.cam.zoom);
-    this.drawSelection();
+    // The ring is world-space: only its radius depends on zoom. Redrawing it every frame was a
+    // needless Graphics clear/fill in the hot path (Stage 5 defect).
+    if (this.selectionDirty || Math.abs(this.cam.zoom - this.lastSelectionZoom) > this.lastSelectionZoom * 0.004) {
+      this.drawSelection();
+      this.drawStateMarks();
+    }
   }
 
   private emitView(): void {
@@ -361,136 +447,10 @@ export class Renderer {
     this.handlers.onViewChange?.(view);
   }
 
-  private applyInertia(dt: number): boolean {
-    if (this.dragging) return false;
-    if (Math.abs(this.velX) < 0.01 && Math.abs(this.velY) < 0.01) return false;
-    const decay = Math.exp(-6 * dt);
-    this.cam.panByScreen(this.velX * dt * 1000, this.velY * dt * 1000);
-    this.velX *= decay;
-    this.velY *= decay;
-    return true;
-  }
-
-  // ---------------------------------------------------------------- input
-
-  private bindInput(canvas: HTMLCanvasElement): void {
-    canvas.style.touchAction = 'none';
-
-    canvas.addEventListener('pointerdown', (e: PointerEvent) => {
-      canvas.setPointerCapture?.(e.pointerId);
-      this.pointers.set(e.pointerId, { id: e.pointerId, x: e.offsetX, y: e.offsetY });
-      this.moved = 0;
-      this.velX = 0;
-      this.velY = 0;
-      if (this.pointers.size === 1) {
-        this.dragging = true;
-        this.pinchUsed = false;
-        this.startLongPress(e.offsetX, e.offsetY);
-      } else if (this.pointers.size === 2) {
-        this.pinchUsed = true;
-        this.moved = 999;
-        this.clearLongPress();
-        const [a, b] = this.firstTwo();
-        if (a && b) {
-          this.pinchDistance = Math.hypot(a.x - b.x, a.y - b.y);
-          this.pinchMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        }
-      }
-    });
-
-    canvas.addEventListener('pointermove', (e: PointerEvent) => {
-      const prev = this.pointers.get(e.pointerId);
-      if (!prev) return;
-      // PointerEvent.movementX is 0 for touch input, so derive the delta ourselves.
-      const dx = e.offsetX - prev.x;
-      const dy = e.offsetY - prev.y;
-      prev.x = e.offsetX;
-      prev.y = e.offsetY;
-
-      if (this.pointers.size === 1) {
-        this.moved += Math.abs(dx) + Math.abs(dy);
-        if (this.moved > 8) this.clearLongPress();
-        this.cam.panByScreen(dx, dy);
-        const now = performance.now();
-        const dt = Math.max(1, now - this.lastMoveAt);
-        this.lastMoveAt = now;
-        this.velX = dx / dt;
-        this.velY = dy / dt;
-      } else if (this.pointers.size === 2) {
-        const [a, b] = this.firstTwo();
-        if (!a || !b) return;
-        const dist = Math.hypot(a.x - b.x, a.y - b.y);
-        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        if (this.pinchDistance > 0 && dist > 0) {
-          this.cam.panByScreen(mid.x - this.pinchMid.x, mid.y - this.pinchMid.y);
-          this.cam.zoomAtScreen(mid.x, mid.y, dist / this.pinchDistance);
-        }
-        this.pinchDistance = dist;
-        this.pinchMid = mid;
-      }
-    });
-
-    const end = (e: PointerEvent): void => {
-      const wasSingle = this.pointers.size === 1;
-      this.pointers.delete(e.pointerId);
-      if (this.pointers.size < 2) this.pinchDistance = 0;
-      if (this.pointers.size === 0) {
-        this.dragging = false;
-        this.clearLongPress();
-        if (wasSingle && this.moved <= 8 && !this.pinchUsed) this.handleTap(e.offsetX, e.offsetY);
-      }
-    };
-    canvas.addEventListener('pointerup', end);
-    canvas.addEventListener('pointercancel', end);
-  }
-
-  /** First two active pointers without allocating an array. */
-  private firstTwo(): [PointerState | undefined, PointerState | undefined] {
-    let a: PointerState | undefined;
-    let b: PointerState | undefined;
-    for (const p of this.pointers.values()) {
-      if (!a) a = p;
-      else {
-        b = p;
-        break;
-      }
-    }
-    return [a, b];
-  }
-
-  private startLongPress(x: number, y: number): void {
-    this.clearLongPress();
-    this.longPressTimer = window.setTimeout(() => {
-      this.longPressTimer = null;
-      const world = this.cam.screenToWorld(x, y);
-      this.handlers.onLongPress?.(world);
-    }, 500);
-  }
-
-  private clearLongPress(): void {
-    if (this.longPressTimer !== null) {
-      window.clearTimeout(this.longPressTimer);
-      this.longPressTimer = null;
-    }
-  }
-
-  private handleTap(x: number, y: number): void {
-    const now = performance.now();
-    const world = this.cam.screenToWorld(x, y);
-
-    // double tap -> 2x zoom toward the point
-    if (now - this.lastTapAt < 300 && Math.hypot(x - this.lastTap.x, y - this.lastTap.y) < 24) {
-      this.lastTapAt = 0;
-      this.cam.zoomToPoint(x, y, Math.min(this.cam.maxZoom(), this.cam.zoom * 2));
-      return;
-    }
-    this.lastTapAt = now;
-    this.lastTap = { x, y };
-    this.handlers.onTap(world);
-  }
-
   destroy(): void {
-    this.clearLongPress();
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.input.destroy();
     this.app.destroy({ removeView: true, releaseGlobalResources: true }, { children: true });
   }
 }

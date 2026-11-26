@@ -7,9 +7,9 @@ import { eventTypeLabel, fmtCompact, fmtNum, isRtl, t } from './i18n.ts';
 import { stat } from './panelKit.ts';
 
 export class PanelHostHistory extends PanelHostSocieties {
-  protected override async renderExtra2(tab: PanelTab): Promise<HTMLElement> {
+  protected override async renderPanel3(tab: PanelTab): Promise<HTMLElement> {
     if (tab === 'history') return this.renderHistory();
-    return this.renderExtra3(tab);
+    return this.renderPanel4(tab);
   }
 
   // ------------------------------------------------------------------ history
@@ -198,6 +198,11 @@ export class PanelHostHistory extends PanelHostSocieties {
       stat(t('history.magnitude'), num(e.magnitude)),
     );
     wrap.append(grid);
+    const links = el('div', { class: 'row' });
+    if (e.place >= 0) links.append(button(t('history.showOnMap'), () => this.api.focusSettlement(e.place)));
+    if (e.actorAName !== '—') links.append(button(`${t('history.openCiv')}: ${e.actorAName}`, () => this.api.selectCiv(e.actorA)));
+    if (e.actorB !== e.actorA && e.actorBName !== '—') links.append(button(`${t('history.openCiv')}: ${e.actorBName}`, () => this.api.selectCiv(e.actorB)));
+    if (links.childElementCount > 0) wrap.append(links);
     if (e.player) wrap.append(pill(t('history.playerCause'), 'accent'));
 
     const causes = section(t('history.causes'));

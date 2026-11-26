@@ -26,7 +26,6 @@ import {
   el,
   empty,
   kv,
-  meter,
   num,
   pill,
   raw,
@@ -35,18 +34,14 @@ import {
   tabs,
 } from './dom.ts';
 import { icon } from './icons.ts';
-import { counterKey, stat } from './panelKit.ts';
+import { counterKey, insight, stat } from './panelKit.ts';
 import {
-  cohortLabel,
   eventTypeLabel,
+  fmtCompact,
   fmtNum,
   fmtPercent,
-  infraLabel,
   isRtl,
-  resourceLabel,
-  riskLabel,
   t,
-  tierLabel,
   type Lang,
 } from './i18n.ts';
 
@@ -207,26 +202,24 @@ export class PanelHostCore {
   }
 
   protected async renderTab(tab: PanelTab): Promise<HTMLElement> {
-    switch (tab) {
-      case 'world':
-        return this.renderWorld();
-      case 'settlement':
-        return this.renderSettlement();
-      default:
-        return this.renderExtra(tab);
-    }
+    if (tab === 'world') return this.renderWorld();
+    return this.renderPanel(tab);
   }
 
-  /** Subclass hooks for the specialised panels, extended in two further layers. */
-  protected async renderExtra(tab: PanelTab): Promise<HTMLElement> {
-    return this.renderExtra2(tab);
+  /** Specialised panels are layered in subclasses so each file keeps one owner. */
+  protected async renderPanel(tab: PanelTab): Promise<HTMLElement> {
+    return this.renderPanel2(tab);
   }
 
-  protected async renderExtra2(_tab: PanelTab): Promise<HTMLElement> {
+  protected async renderPanel2(_tab: PanelTab): Promise<HTMLElement> {
     return empty(t('common.noData'));
   }
 
-  protected async renderExtra3(_tab: PanelTab): Promise<HTMLElement> {
+  protected async renderPanel3(_tab: PanelTab): Promise<HTMLElement> {
+    return empty(t('common.noData'));
+  }
+
+  protected async renderPanel4(_tab: PanelTab): Promise<HTMLElement> {
     return empty(t('common.noData'));
   }
 
@@ -254,6 +247,17 @@ export class PanelHostCore {
     head.append(el('div', { class: 'hero-title', text: t('world.title') }));
     head.append(el('div', { class: 'hero-sub', text: world.seedText }));
     wrap.append(head);
+
+    const previous = world.series.length >= 2 ? world.series[world.series.length - 2]! : null;
+    const latest = world.series[world.series.length - 1] ?? null;
+    const delta = previous && latest ? latest.population - previous.population : 0;
+    wrap.append(
+      insight(
+        t('panel.insight'),
+        `${t('map.population')} ${fmtNum(world.population)} · ${delta >= 0 ? '+' : ''}${fmtNum(delta)} · ${t('map.wars')} ${fmtNum(latest?.wars ?? 0)}`,
+        delta < 0 ? 'warn' : 'neutral',
+      ),
+    );
 
     wrap.append(
       el('div', { class: 'stat-grid' },
@@ -312,7 +316,7 @@ export class PanelHostCore {
       ['tradeVolume', world.counters.tradeVolume ?? 0],
     ];
     for (const [key, value] of interesting) {
-      counterGrid.append(stat(counterKey(key), num(value)));
+      counterGrid.append(stat(counterKey(key), el('span', { dir: 'ltr', text: fmtCompact(value) })));
     }
     counters.append(counterGrid);
     wrap.append(counters);
@@ -351,139 +355,6 @@ export class PanelHostCore {
     if (!window.confirm(t('world.deleteConfirm', { name: this.worldNameForConfirm }))) return;
     await this.api.deleteWorld();
   }
-  // ------------------------------------------------------------------ settlement
-
-  private async renderSettlement(): Promise<HTMLElement> {
-    const id = this.api.selectedSettlement();
-    if (id === null) return empty(t('settlement.selectHint'));
-    const s = await this.api.querySettlement(id);
-    if (!s) return empty(t('settlement.selectHint'));
-    const ecology = await this.api.queryEcology(id);
-    const wrap = el('div', { class: 'panel-content' });
-
-    const head = el('div', { class: 'hero' });
-    head.append(el('div', { class: 'hero-title', text: s.name }));
-    head.append(el('div', { class: 'hero-sub', text: `${tierLabel(s.tier)} · ${s.civName}` }));
-    const actions = el('div', { class: 'hero-actions' });
-    actions.append(button(t('nav.showOnMap'), () => this.api.focusSettlement(s.id)));
-    actions.append(button(t('settlement.bless'), () => {
-      this.active = 'influence';
-      this.influence.op = 'bless';
-      this.influence.bless.settlement = s.id;
-      this.renderTabs();
-      void this.render();
-    }));
-    head.append(actions);
-    wrap.append(head);
-
-    const riskRow = el('div', { class: 'pill-row' });
-    if (!s.alive) riskRow.append(pill(t('risk.ruined'), 'danger'));
-    if (s.risks.length === 0) riskRow.append(pill(t('settlement.noRisks'), 'good'));
-    for (const risk of s.risks) {
-      riskRow.append(pill(riskLabel(risk.code), risk.severity >= 3 ? 'danger' : 'warn'));
-    }
-    wrap.append(riskRow);
-
-    wrap.append(
-      el('div', { class: 'stat-grid' },
-        stat(t('common.population'), num(s.pop)),
-        stat(t('common.health'), num(s.health)),
-        stat(t('common.stability'), num(s.stability)),
-        stat(t('common.literacy'), num(s.literacy)),
-        stat(t('common.treasury'), num(s.treasury)),
-        stat(t('settlement.daysLeft'), num(s.daysOfFood)),
-      ),
-    );
-
-    wrap.append(
-      section(t('settlement.trend'),
-        sparkline(s.trend, { label: t('settlement.trend'), color: '#6f8f8a', fill: 'rgba(111,143,138,0.12)' }),
-        el('p', { class: 'hint', text: t('settlement.trendHint') }),
-      ),
-    );
-
-    const people = section(t('settlement.cohorts'));
-    const total = Math.max(1, s.pop);
-    for (let c = 0; c < s.cohorts.length; c++) {
-      people.append(meter(cohortLabel(c), s.cohorts[c] ?? 0, total, `${fmtNum(s.cohorts[c] ?? 0)} · ${fmtPercent(((s.cohorts[c] ?? 0) * 1000) / total)}`));
-    }
-    const occ = el('div', { class: 'pill-row' });
-    for (let k = 0; k < s.occShare.length; k++) {
-      const names = ['cohort.farmers', 'cohort.extractors', 'cohort.crafters', 'cohort.traders', 'cohort.soldiers'];
-      occ.append(pill(`${t(names[k]!)} ${fmtPercent(s.occShare[k] ?? 0)}`));
-    }
-    people.append(el('h4', { text: t('settlement.occupations') }), occ);
-    wrap.append(people);
-
-    const resources = section(t('settlement.resources'));
-    for (let r = 0; r < s.stock.length; r++) {
-      const stock = s.stock[r] ?? 0;
-      const cap = Math.max(1, s.cap[r] ?? 0);
-      resources.append(
-        meter(
-          `${resourceLabel(r)} · ${t('settlement.price')} ${fmtNum(s.price[r] ?? 0)}`,
-          stock,
-          cap,
-          `${fmtNum(stock)} / ${fmtNum(cap)}`,
-        ),
-      );
-      if (r === 0 || r === 1) {
-        const days = r === 0 ? s.daysOfFood : s.daysOfWater;
-        resources.append(el('p', { class: `hint${days < 10 ? ' danger' : ''}`, text: `${t('settlement.daysLeft')}: ${fmtNum(days)}` }));
-      }
-    }
-    wrap.append(resources);
-
-    const infra = section(t('settlement.infrastructure'));
-    if (s.infraNames.length === 0) infra.append(empty(t('settlement.noInfrastructure')));
-    else {
-      const row = el('div', { class: 'pill-row' });
-      for (const name of s.infraNames) {
-        const index = ['granary', 'well', 'irrigation', 'walls', 'market', 'workshop', 'road', 'temple', 'academy', 'aqueduct', 'barracks', 'harbour'].indexOf(name);
-        row.append(pill(index >= 0 ? infraLabel(index) : name, 'accent'));
-      }
-      infra.append(row);
-    }
-    wrap.append(infra);
-
-    const routes = section(t('settlement.routes'));
-    if (s.routes.length === 0) routes.append(empty(t('settlement.noRoutes')));
-    for (const route of s.routes.slice(0, 6)) {
-      const other = route.from === s.id ? route.toName : route.fromName;
-      const row = el('div', { class: 'list-row' });
-      row.append(el('span', { class: 'k', text: other }));
-      row.append(el('span', { class: 'v', dir: 'ltr', text: `${fmtNum(route.volume)} · ${fmtNum(route.tariff)}‰` }));
-      routes.append(row);
-    }
-    wrap.append(routes);
-
-    const eco = section(t('settlement.ecology'));
-    eco.append(
-      meter(t('common.fertility'), s.fertility, 255),
-      meter(t('common.vegetation'), s.vegetation, 255),
-      meter(t('common.moisture'), s.moisture, 255),
-      kv(t('common.temperature'), `${fmtNum(s.temperature)}°C`),
-      kv(t('settlement.biome'), s.biomeName),
-      kv(t('settlement.region'), num(s.region)),
-      kv(t('settlement.founded'), `${t('common.day')} ${fmtNum(s.foundedDay)}`),
-      kv(t('settlement.position'), el('span', { dir: 'ltr', text: `${s.x}, ${s.y}` })),
-    );
-    if (ecology.local) {
-      if (ecology.local.drought) eco.append(pill(t('risk.drought'), 'warn'));
-      if (ecology.local.blight) eco.append(pill(t('risk.blight'), 'danger'));
-    }
-    wrap.append(eco);
-
-    const recent = section(t('settlement.recent'));
-    if (s.recentEvents.length === 0) recent.append(empty(t('common.nothingHere')));
-    for (const event of s.recentEvents) recent.append(this.eventRow(event));
-    wrap.append(recent);
-
-    if (s.occupier > 0) wrap.append(pill(t('settlement.occupiedBy', { name: s.occupierName }), 'danger'));
-    return wrap;
-  }
-
-
   protected eventRow(event: EventView): HTMLElement {
     const row = el('button', { class: `event-row${event.player ? ' player' : ''}`, type: 'button' });
     const dot = el('span', { class: `dot sev${event.severity}` });

@@ -32,15 +32,20 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-/** Mineral heat ramp for ecological values: dry ochre → olive → deep green. */
-function ecologyColor(value: number): [number, number, number] {
-  const t = clamp01(value / 255);
-  if (t < 0.5) {
-    const k = t / 0.5;
-    return [Math.round(lerp(198, 142, k)), Math.round(lerp(158, 154, k)), Math.round(lerp(102, 92, k))];
-  }
-  const k = (t - 0.5) / 0.5;
-  return [Math.round(lerp(142, 56, k)), Math.round(lerp(154, 116, k)), Math.round(lerp(92, 74, k))];
+/**
+ * Ecological ramps are normalized to the data range of the layer, not to an absolute 0..255. A dry
+ * world and a wet world then both show their real internal differences instead of washing out.
+ */
+function ecologyColor(value: number, metric: string, min: number, max: number): [number, number, number] {
+  const t = clamp01((value - min) / Math.max(1, max - min));
+  const stops: Record<string, [[number, number, number], [number, number, number]]> = {
+    fertility: [[206, 184, 130], [42, 92, 58]],
+    vegetation: [[185, 166, 118], [30, 104, 62]],
+    moisture: [[206, 178, 112], [48, 118, 146]],
+    temperature: [[78, 126, 168], [196, 78, 52]],
+  };
+  const [a, b] = stops[metric] ?? stops.fertility!;
+  return [Math.round(lerp(a[0], b[0], t)), Math.round(lerp(a[1], b[1], t)), Math.round(lerp(a[2], b[2], t))];
 }
 
 function populationColor(rank: number): number {
@@ -177,12 +182,15 @@ export class LayerView {
       }
       ctx.stroke();
     } else {
-      // ecology: land fertility, sea transparent
+      // ecology: one normalized metric, sea transparent
+      const metric = String(data.meta.metric ?? 'fertility');
+      const min = Number(data.meta.min ?? 1);
+      const max = Number(data.meta.max ?? 255);
       for (let y = 0; y < data.height; y++) {
         for (let x = 0; x < data.width; x++) {
           const value = cells[y * data.width + x] ?? 0;
           if (value === 0) continue;
-          const [r, g, b] = ecologyColor(value);
+          const [r, g, b] = ecologyColor(value, metric, min, max);
           const x0 = Math.floor(x * cellW);
           const x1 = Math.max(x0 + 1, Math.floor((x + 1) * cellW));
           const y0 = Math.floor(y * cellH);
@@ -193,7 +201,7 @@ export class LayerView {
               px[o] = r;
               px[o + 1] = g;
               px[o + 2] = b;
-              px[o + 3] = 168;
+              px[o + 3] = 205;
             }
           }
         }
@@ -214,8 +222,8 @@ export class LayerView {
     for (const line of data.lines) {
       const isWar = line.kind === 1;
       const color = isWar ? 0xb8503c : 0x6f8f8a;
-      const width = (isWar ? 1.2 : 0.7) * s;
-      const alpha = isWar ? 0.85 : 0.55;
+      const width = (isWar ? 2.2 : 1.1) * s;
+      const alpha = isWar ? 0.95 : 0.7;
       g.moveTo((line.x1 + 0.5) * TILE_PX, (line.y1 + 0.5) * TILE_PX)
         .lineTo((line.x2 + 0.5) * TILE_PX, (line.y2 + 0.5) * TILE_PX)
         .stroke({ width, color, alpha });
@@ -281,12 +289,13 @@ export class LayerView {
       // event pin above the settlement: severity is size and ring count, not colour alone
       const top = y - (13 + Math.max(1, Math.min(5, point.value)) * 1.4) * s;
       g.moveTo(x, y - 4 * s).lineTo(x, top + 2 * s).stroke({ width: 1 * s, color: 0x1a1712, alpha: 0.55 });
-      const radius = (3 + Math.max(1, Math.min(5, point.value)) * 0.75) * s;
+      const radius = (4.2 + Math.max(1, Math.min(5, point.value)) * 1.05) * s;
       const color = severityColor(point.value);
-      g.circle(x, top - radius, radius).fill({ color, alpha: 0.96 });
-      g.circle(x, top - radius, radius).stroke({ width: 1.2 * s, color: 0x1a1712, alpha: 0.8 });
+      g.circle(x, top - radius, radius + 1.4 * s).fill({ color: 0x0c1418, alpha: 0.65 });
+      g.circle(x, top - radius, radius).fill({ color, alpha: 0.98 });
+      g.circle(x, top - radius, radius).stroke({ width: 1.4 * s, color: 0xf2e8d2, alpha: 0.9 });
       if (point.value >= 4) {
-        g.circle(x, top - radius, radius + 2 * s).stroke({ width: 1 * s, color: 0xf2e8d2, alpha: 0.85 });
+        g.circle(x, top - radius, radius + 3 * s).stroke({ width: 1.2 * s, color: 0xf2e8d2, alpha: 0.9 });
       }
     }
   }

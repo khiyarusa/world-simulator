@@ -1,13 +1,12 @@
 /**
- * Settlement labels in the DOM, not in PixiJS (docs/TECHNICAL_ARCHITECTURE.md §7).
+ * Settlement labels (Stage 5 WP3.4): DOM labels with measured collision avoidance.
  *
- * A fixed pool of nodes is reused; we never create a Text object per settlement, and we never
- * add a node per settlement either. Only the settlements that matter on screen get a label.
+ * A fixed pool is reused; no node is created per settlement and no text object is allocated per
+ * frame. Priority is selection > capital > population, so a small settlement never hides the city
+ * the player is inspecting. Labels are clamped inside the safe viewport instead of being clipped.
  */
-
 export interface LabelItem {
   readonly id: number;
-  /** world pixels */
   readonly wx: number;
   readonly wy: number;
   readonly name: string;
@@ -15,12 +14,21 @@ export interface LabelItem {
   readonly capital: boolean;
 }
 
-const POOL_SIZE = 28;
+const POOL_SIZE = 32;
+
+interface Placed {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export class Labels {
   private readonly nodes: HTMLDivElement[] = [];
   private items: readonly LabelItem[] = [];
   private visible = true;
+  private zoom = 1;
+  private selectedId: number | null = null;
 
   constructor(host: HTMLElement) {
     for (let i = 0; i < POOL_SIZE; i++) {
@@ -36,41 +44,71 @@ export class Labels {
     this.items = items;
   }
 
+  setSelected(id: number | null): void {
+    this.selectedId = id;
+  }
+
+  setZoom(zoom: number): void {
+    this.zoom = zoom;
+    this.visible = zoom > 0.035;
+    if (!this.visible) this.hideAll();
+  }
+
   setVisible(visible: boolean): void {
     this.visible = visible;
-    if (!visible) {
-      for (const node of this.nodes) node.style.display = 'none';
-    }
+    if (!visible) this.hideAll();
   }
 
-  /**
-   * Reposition the pool for the current camera. `project` maps world pixels to CSS pixels.
-   * Labels are picked by weight (population, capital, selection) so the important names survive.
-   */
+  private hideAll(): void {
+    for (const node of this.nodes) node.style.display = 'none';
+  }
+
   update(project: (wx: number, wy: number) => { x: number; y: number }, viewW: number, viewH: number): void {
-    if (!this.visible) return;
-    const candidates: LabelItem[] = [];
+    if (!this.visible) {
+      this.hideAll();
+      return;
+    }
+    const marginTop = 68;
+    const marginBottom = 108;
+    const limit = this.zoom < 0.12 ? 8 : this.zoom < 0.3 ? 14 : this.zoom < 1 ? 22 : POOL_SIZE;
+    const candidates: Array<{ item: LabelItem; x: number; y: number; priority: number }> = [];
     for (const item of this.items) {
       const p = project(item.wx, item.wy);
-      if (p.x < -60 || p.y < -30 || p.x > viewW + 60 || p.y > viewH + 30) continue;
-      candidates.push(item);
-      if (candidates.length >= POOL_SIZE * 2) break;
+      if (p.x < 22 || p.y < marginTop || p.x > viewW - 22 || p.y > viewH - marginBottom) continue;
+      const priority = item.id === this.selectedId ? 1e9 : (item.capital ? 500_000 : 0) + item.weight;
+      candidates.push({ item, x: p.x, y: p.y, priority });
     }
-    candidates.sort((a, b) => b.weight - a.weight);
+    candidates.sort((a, b) => b.priority - a.priority || a.item.id - b.item.id);
 
-    for (let i = 0; i < this.nodes.length; i++) {
-      const node = this.nodes[i]!;
-      const item = candidates[i];
-      if (!item) {
-        node.style.display = 'none';
-        continue;
-      }
-      const p = project(item.wx, item.wy);
+    const placed: Placed[] = [];
+    let used = 0;
+    for (const candidate of candidates) {
+      if (used >= this.nodes.length) break;
+      if (used >= limit && candidate.item.id !== this.selectedId) continue;
+      const text = candidate.item.name;
+      const w = Math.min(150, 14 + text.length * 6.6);
+      const h = 19;
+      let y = candidate.y - 20;
+      if (y < marginTop) y = candidate.y + 12;
+      const x = Math.max(w / 2 + 6, Math.min(viewW - w / 2 - 6, candidate.x));
+      const box = { x: x - w / 2 - 2, y: y - h / 2, w: w + 4, h: h + 2 };
+      const selected = candidate.item.id === this.selectedId;
+      if (!selected && overlaps(box, placed)) continue;
+      placed.push(box);
+      const node = this.nodes[used++]!;
       node.style.display = 'block';
-      node.style.left = `${p.x.toFixed(1)}px`;
-      node.style.top = `${p.y.toFixed(1)}px`;
-      node.textContent = item.name;
-      node.className = item.capital ? 'settlement-label capital' : 'settlement-label';
+      node.style.left = `${x.toFixed(1)}px`;
+      node.style.top = `${y.toFixed(1)}px`;
+      node.textContent = candidate.item.capital ? `◆ ${text}` : text;
+      node.className = `settlement-label${candidate.item.capital ? ' capital' : ''}${selected ? ' selected' : ''}`;
     }
+    for (let i = used; i < this.nodes.length; i++) this.nodes[i]!.style.display = 'none';
   }
+}
+
+function overlaps(a: Placed, placed: readonly Placed[]): boolean {
+  for (const b of placed) {
+    if (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y) return true;
+  }
+  return false;
 }

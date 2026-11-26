@@ -1,9 +1,9 @@
 /** Layer legend: symbols and scales, localised and RTL-aware. */
-import type { LayerKind } from '../worker/protocol.ts';
+import type { EcologyMetric, LayerKind } from '../worker/protocol.ts';
 import { el } from './dom.ts';
 import { t } from './i18n.ts';
 
-export function renderLegend(host: HTMLElement, layer: LayerKind): void {
+export function renderLegend(host: HTMLElement, layer: LayerKind, metric: EcologyMetric = 'fertility'): void {
     host.replaceChildren();
     host.append(el('span', { class: 'legend-title', text: t(`layer.${layer}`) }));
     if (layer === 'terrain') {
@@ -32,11 +32,14 @@ export function renderLegend(host: HTMLElement, layer: LayerKind): void {
       return;
     }
     if (layer === 'population' || layer === 'economy' || layer === 'ecology') {
-      const scale = el('span', { class: `legend-scale ${layer}` });
+      const scale = el('span', { class: `legend-scale ${layer}${layer === 'ecology' ? ` ${metric}` : ''}` });
       host.append(el('span', { class: 'legend-item', text: t('layer.low') }), scale, el('span', { class: 'legend-item', text: t('layer.high') }));
       if (layer === 'population') host.append(el('span', { class: 'legend-ring' }), el('span', { class: 'legend-item', text: t('layer.migration') }));
       if (layer === 'economy') host.append(el('span', { class: 'legend-ring danger' }), el('span', { class: 'legend-item', text: t('layer.shortage') }));
-      if (layer === 'ecology') host.append(el('span', { class: 'legend-ring' }), el('span', { class: 'legend-item', text: t('layer.drought') }));
+      if (layer === 'ecology') {
+        host.append(el('span', { class: 'legend-ring' }), el('span', { class: 'legend-item', text: t('layer.drought') }));
+        host.append(el('span', { class: 'legend-item', text: t(`common.${metric}`) }));
+      }
       return;
     }
   }

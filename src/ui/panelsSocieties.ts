@@ -1,19 +1,19 @@
 /** Civilisation and economy panels (the first specialised layer). */
 import type { PanelTab } from './panels.ts';
-import { PanelHostCore } from './panels.ts';
-import { stat } from './panelKit.ts';
+import { PanelHostSettlement } from './panelsSettlement.ts';
+import { insight, stat } from './panelKit.ts';
 import { bar, button, el, empty, kv, meter, num, pill, section, select, sparkline } from './dom.ts';
 import { fmtCompact, fmtNum, isRtl, resourceLabel, t, treatyLabel, techLabel } from './i18n.ts';
 
-export class PanelHostSocieties extends PanelHostCore {
-  protected override async renderExtra(tab: PanelTab): Promise<HTMLElement> {
+export class PanelHostSocieties extends PanelHostSettlement {
+  protected override async renderPanel2(tab: PanelTab): Promise<HTMLElement> {
     switch (tab) {
       case 'civ':
         return this.renderCiv();
       case 'economy':
         return this.renderEconomy();
       default:
-        return this.renderExtra2(tab);
+        return this.renderPanel3(tab);
     }
   }
 
@@ -36,7 +36,10 @@ export class PanelHostSocieties extends PanelHostCore {
       wrap.append(empty(t('civ.selectHint')));
       return wrap;
     }
-    const view = await this.api.queryCiv(current);
+    const [view, allSettlements] = await Promise.all([
+      this.api.queryCiv(current),
+      this.api.querySettlements(),
+    ]);
     if (!view) {
       wrap.append(empty(t('civ.selectHint')));
       return wrap;
@@ -49,6 +52,17 @@ export class PanelHostSocieties extends PanelHostCore {
     head.append(actions);
     wrap.append(head);
 
+    const war = view.wars[0];
+    wrap.append(
+      insight(
+        t('panel.insight'),
+        war
+          ? `${t('common.war')} · ${war.opponentName} · ${t('civ.warScore')} ${fmtNum(war.score)}`
+          : `${t('common.peace')} · ${t('civ.legitimacy')} ${fmtNum(view.legitimacy)} · ${t('civ.army')} ${fmtNum(view.army)}`,
+        war ? 'danger' : 'neutral',
+      ),
+    );
+
     wrap.append(
       el('div', { class: 'stat-grid' },
         stat(t('common.population'), num(view.population)),
@@ -56,7 +70,7 @@ export class PanelHostSocieties extends PanelHostCore {
         stat(t('civ.legitimacy'), num(view.legitimacy)),
         stat(t('civ.army'), num(view.army)),
         stat(t('civ.exhaustion'), num(view.exhaustion)),
-        stat(t('civ.treasury'), num(view.treasury)),
+        stat(t('civ.treasury'), el('span', { dir: 'ltr', text: fmtCompact(view.treasury) })),
       ),
     );
 
@@ -94,7 +108,8 @@ export class PanelHostSocieties extends PanelHostCore {
     const relations = section(t('civ.relations'));
     if (view.relations.length === 0) relations.append(empty(t('common.nothingHere')));
     for (const rel of view.relations) {
-      const row = el('div', { class: 'list-row' });
+      const row = el('button', { class: 'list-row clickable', type: 'button' });
+      row.addEventListener('click', () => this.api.selectCiv(rel.civ));
       row.append(el('span', { class: 'k', dir: 'auto', text: rel.name }));
       row.append(el('span', { class: `v ${rel.war ? 'danger' : ''}`, dir: 'ltr', text: `${fmtNum(rel.relation)} · ${fmtNum(rel.grievance)}` }));
       if (rel.treaty) row.append(pill(treatyLabel(view.treaties.find((x) => x.withCiv === rel.civ)?.type ?? 0), 'good'));
@@ -106,8 +121,11 @@ export class PanelHostSocieties extends PanelHostCore {
     const wars = section(t('civ.wars'));
     if (view.wars.length === 0) wars.append(empty(t('civ.noWars')));
     for (const war of view.wars) {
-      wars.append(kv(`${war.opponentName}`, el('span', { dir: 'ltr', text: `${fmtNum(war.score)} · ${fmtNum(war.battles)}` })));
-      wars.append(meter(t('civ.exhaustion'), war.exhaustSelf, 100));
+      const row = el('button', { class: 'list-row clickable', type: 'button' });
+      row.append(el('span', { class: 'k', text: war.opponentName }));
+      row.append(el('span', { class: 'v', dir: 'ltr', text: `${fmtNum(war.score)} · ${fmtNum(war.battles)}` }));
+      row.addEventListener('click', () => this.api.selectCiv(war.opponent));
+      wars.append(row, meter(t('civ.exhaustion'), war.exhaustSelf, 100));
     }
     wrap.append(wars);
 
@@ -143,6 +161,18 @@ export class PanelHostSocieties extends PanelHostCore {
     for (const event of view.milestones) milestones.append(this.eventRow(event));
     wrap.append(milestones);
 
+    const settlements = allSettlements.rows.filter((row) => row.civId === view.id).slice(0, 8);
+    if (settlements.length > 0) {
+      const list = section(t('civ.settlementsList'));
+      for (const row of settlements) {
+        const item = el('button', { class: 'list-row clickable', type: 'button' });
+        item.append(el('span', { class: 'k', text: row.name }), el('span', { class: 'v', dir: 'ltr', text: fmtCompact(row.pop) }));
+        item.addEventListener('click', () => this.api.focusSettlement(row.id));
+        list.append(item);
+      }
+      wrap.append(list);
+    }
+
     const incite = button(t('influence.incite'), () => {
       this.active = 'influence';
       this.influence.op = 'incite';
@@ -161,14 +191,22 @@ export class PanelHostSocieties extends PanelHostCore {
     const economy = await this.api.queryEconomy();
     const wrap = el('div', { class: 'panel-content' });
     wrap.append(el('div', { class: 'hero' }, el('div', { class: 'hero-title', text: t('economy.title') })));
+    const worst = economy.shortages[0];
+    wrap.append(
+      insight(
+        t('economy.worst'),
+        worst ? `${worst.name} · ${resourceLabel(worst.resource)} · ${t('economy.daysShort', { n: fmtNum(worst.days) })}` : t('economy.noPressure'),
+        worst ? 'danger' : 'neutral',
+      ),
+    );
     wrap.append(
       el('div', { class: 'stat-grid' },
         stat(t('common.population'), num(economy.population)),
-        stat(t('common.treasury'), num(economy.treasury)),
-        stat(t('economy.tradeVolume'), num(economy.tradeVolume)),
-        stat(t('economy.tax'), num(economy.taxCollected)),
-        stat(t('economy.produced'), num(economy.foodProduced)),
-        stat(t('economy.consumed'), num(economy.foodConsumed)),
+        stat(t('common.treasury'), el('span', { dir: 'ltr', text: fmtCompact(economy.treasury) })),
+        stat(t('economy.tradeVolume'), el('span', { dir: 'ltr', text: fmtCompact(economy.tradeVolume) })),
+        stat(t('economy.tax'), el('span', { dir: 'ltr', text: fmtCompact(economy.taxCollected) })),
+        stat(t('economy.produced'), el('span', { dir: 'ltr', text: fmtCompact(economy.foodProduced) })),
+        stat(t('economy.consumed'), el('span', { dir: 'ltr', text: fmtCompact(economy.foodConsumed) })),
       ),
     );
 

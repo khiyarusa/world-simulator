@@ -7,7 +7,7 @@ import { button, el, empty, field, kv, numberInput, pill, raw, section, select }
 import { fmtNum, resourceLabel, t } from './i18n.ts';
 
 export class PanelHost extends PanelHostHistory {
-  protected override async renderExtra3(tab: PanelTab): Promise<HTMLElement> {
+  protected override async renderPanel4(tab: PanelTab): Promise<HTMLElement> {
     if (tab === 'influence') return this.renderInfluence();
     return empty(t('common.noData'));
   }

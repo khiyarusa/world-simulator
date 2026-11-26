@@ -6,25 +6,30 @@
  * panel query. Layout is mobile-first and RTL-aware through logical properties in `styles.css`.
  */
 import type { Speed } from '../worker/protocol.ts';
-import { LAYER_KINDS, type LayerKind } from '../worker/protocol.ts';
+import type { EcologyMetric, LayerKind } from '../worker/protocol.ts';
 import type { WorldDoc } from '../platform/storage.ts';
 import type { PanelApi, PanelTab, SaveState } from './panels.ts';
 import { PanelHost } from './panelsFull.ts';
 import { CreationPanel, defaultCreateInput, type CreateInput } from './creation.ts';
 import { WorldsScreen } from './worlds.ts';
-import { button, el, empty } from './dom.ts';
-import { icon, LAYER_ICONS } from './icons.ts';
+import { el, empty } from './dom.ts';
+import { icon } from './icons.ts';
 import { fmtNum, lang, localDate, t, type Lang } from './i18n.ts';
 import { renderLegend } from './legend.ts';
+import { applyPrefs, DEFAULT_PREFS, loadPrefs, savePrefs, type UiPrefs } from './prefs.ts';
+import { Sheets } from './sheets.ts';
+import { buildDock } from './dock.ts';
+import { MapChrome } from './mapChrome.ts';
+import { Coach } from './coach.ts';
 
 export type { CreateInput, PresetId } from './creation.ts';
-
 export interface ShellHandlers {
   onCreate(input: CreateInput): void;
   onPreviewRequest(input: CreateInput): void;
   onSpeed(speed: Speed): void;
   onSave(): void;
   onLayer(layer: LayerKind): void;
+  onLayerMetric(metric: EcologyMetric): void;
   onOpenPanel(tab: PanelTab): void;
   onChipTap(): void;
   onBackToWorlds(): void;
@@ -33,6 +38,8 @@ export interface ShellHandlers {
   onWorldsRename(id: string, name: string): void;
   onWorldsDelete(id: string): void;
   onLanguage(lang: Lang): void;
+  onPrefs(prefs: UiPrefs): void;
+  onReplayOnboarding(): void;
 }
 
 export interface WorldSummary {
@@ -45,8 +52,6 @@ export interface WorldSummary {
   readonly population: number;
   readonly landFraction: number;
 }
-
-type Sheet = 'layers' | 'speed' | null;
 
 export class Shell {
   readonly labelsHost: HTMLElement;
@@ -63,7 +68,10 @@ export class Shell {
   private readonly chip: HTMLDivElement;
   private readonly chipName: HTMLElement;
   private readonly chipMeta: HTMLElement;
-  private readonly sheet: HTMLDivElement;
+  private readonly sheets: Sheets;
+  private readonly chrome: MapChrome;
+  private readonly coach: Coach;
+  private prefs: UiPrefs = DEFAULT_PREFS;
   private readonly layerLegend: HTMLDivElement;
   private readonly creationHost: HTMLDivElement;
   private creation: CreationPanel | null = null;
@@ -75,8 +83,8 @@ export class Shell {
   private toastTimer: number | null = null;
   private summary: WorldSummary | null = null;
   private chipOpen = false;
-  private sheetOpen: Sheet = null;
   private activeLayer: LayerKind = 'terrain';
+  private layerMetric: EcologyMetric = 'fertility';
   private lastDay = 1;
   private lastSaveState: SaveState = { savedDay: 0, dirty: false, saving: false };
 
@@ -101,11 +109,20 @@ export class Shell {
     titles.append(this.worldNameEl, this.dateEl);
     this.saveEl = el('div', { class: 'save-state' });
     this.topbar.append(titles, el('div', { class: 'spacer' }), this.saveEl);
-    this.topbar.append(this.iconButton('save', t('common.save'), () => this.handlers.onSave()));
+    this.saveEl.classList.add('clickable');
+    this.saveEl.setAttribute('role', 'button');
+    this.saveEl.setAttribute('tabindex', '0');
+    this.saveEl.setAttribute('aria-label', t('common.saveNow'));
+    this.saveEl.addEventListener('click', () => this.handlers.onSave());
+    this.saveEl.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') this.handlers.onSave();
+    });
+    this.topbar.append(this.iconButton('settings', t('settings.title'), () => this.openSettingsSheet()));
     this.topbar.append(this.iconButton('menu', t('nav.menu'), () => this.handlers.onOpenPanel('world')));
     this.ui.append(this.topbar);
 
-    this.ui.append(this.buildDock());
+    this.chrome = new MapChrome(this.ui);
+    this.ui.append(buildDock(() => this.openLayerSheet(), () => this.handlers.onOpenPanel('world')));
 
     this.chip = el('div', { class: 'chip', hidden: true });
     this.chipName = el('span', { class: 'name' });
@@ -116,11 +133,6 @@ export class Shell {
 
     this.layerLegend = el('div', { class: 'legend', hidden: true });
     this.ui.append(this.layerLegend);
-
-    this.sheet = el('div', { class: 'sheet', role: 'dialog' });
-    const handle = el('div', { class: 'sheet-handle' });
-    this.sheet.append(handle, el('div', { class: 'sheet-body' }));
-    this.ui.append(this.sheet);
 
     if (!existingToast) this.ui.append(this.toastEl);
 
@@ -147,6 +159,43 @@ export class Shell {
     this.speedBtn.addEventListener('click', () => this.openSpeedSheet());
     const speedSlot = this.ui.querySelector('[data-slot="speed"]');
     if (speedSlot) speedSlot.replaceWith(this.speedBtn);
+    this.prefs = loadPrefs();
+    applyPrefs(this.prefs);
+    this.coach = new Coach(this.ui, () => this.prefs, (next) => {
+      this.prefs = next;
+      applyPrefs(next);
+      savePrefs(next);
+    });
+    this.sheets = new Sheets(this.ui, {
+      onLayer: (layer) => {
+        this.handlers.onLayer(layer);
+        this.setActiveLayer(layer);
+      },
+      onLayerMetric: (metric) => {
+        this.handlers.onLayerMetric(metric);
+        this.setLayerMetric(metric);
+      },
+      onSpeed: (speed) => {
+        this.handlers.onSpeed(speed);
+        this.setSpeed(speed);
+      },
+      onPrefs: (next) => {
+        this.prefs = next;
+        applyPrefs(next);
+        savePrefs(next);
+        this.handlers.onPrefs(next);
+        this.relabel();
+      },
+      onLanguage: (code) => {
+        this.handlers.onLanguage(code);
+        this.relabel();
+      },
+      onReplayOnboarding: () => {
+        this.prefs = { ...this.prefs, onboarding: 0 };
+        savePrefs(this.prefs);
+        this.handlers.onReplayOnboarding();
+      },
+    });
     this.attachVisible(false);
   }
 
@@ -155,35 +204,12 @@ export class Shell {
     this.ui.append(this.panels.root);
   }
 
-  // ------------------------------------------------------------------ structure
-
-  private buildDock(): HTMLElement {
-    const dock = el('div', { class: 'dock' });
-    const layers = el('button', { class: 'dock-btn', type: 'button' });
-    layers.dataset.labelKey = 'nav.layers';
-    layers.append(icon('layers'), el('span', { class: 'dock-label', text: t('nav.layers') }));
-    layers.addEventListener('click', () => this.openLayerSheet());
-    dock.append(layers);
-
-    const speed = el('div', { class: 'dock-slot', 'data-slot': 'speed' });
-    dock.append(speed);
-
-    const menu = el('button', { class: 'dock-btn', type: 'button' });
-    menu.dataset.labelKey = 'nav.menu';
-    menu.append(icon('menu'), el('span', { class: 'dock-label', text: t('nav.menu') }));
-    menu.addEventListener('click', () => this.handlers.onOpenPanel('world'));
-    dock.append(menu);
-    return dock;
-  }
-
   private iconButton(name: string, aria: string, onClick: () => void): HTMLButtonElement {
     const b = el('button', { class: 'icon-btn', type: 'button', 'aria-label': aria, title: aria });
     b.append(icon(name));
     b.addEventListener('click', onClick);
     return b;
   }
-
-  // ------------------------------------------------------------------ flow
 
   bootDone(): void {
     this.boot.classList.add('hidden');
@@ -248,6 +274,7 @@ export class Shell {
     this.worlds.hide();
     this.topbar.classList.remove('hidden');
     this.attachVisible(true);
+    this.setMapStats(summary);
     this.bootDone();
     this.setSpeed(this.currentSpeed);
   }
@@ -266,6 +293,7 @@ export class Shell {
   setSummary(summary: WorldSummary): void {
     this.summary = summary;
     this.worldNameEl.textContent = summary.name;
+    this.setMapStats(summary);
   }
 
   setDate(day: number): void {
@@ -298,7 +326,6 @@ export class Shell {
     return this.creation?.currentInput ?? { ...this.lastCreateInput };
   }
 
-  // ------------------------------------------------------------------ chip
 
   showChip(name: string, meta: string): void {
     this.chipName.textContent = name;
@@ -316,54 +343,24 @@ export class Shell {
     return this.chipOpen;
   }
 
-  // ------------------------------------------------------------------ sheets
-
-  private setSheet(which: Sheet): void {
-    this.sheetOpen = which;
-    this.sheet.classList.toggle('open', which !== null);
-  }
 
   closeSheet(): void {
-    this.setSheet(null);
+    this.sheets.close();
   }
 
   private openLayerSheet(): void {
-    if (this.sheetOpen === 'layers') {
-      this.setSheet(null);
-      return;
-    }
-    const body = this.sheet.querySelector('.sheet-body');
-    if (!body) return;
-    body.replaceChildren(
-      el('h2', { text: t('nav.layers') }),
-      el('p', { class: 'sub', text: t('layer.active') }),
-    );
-    const list = el('div', { class: 'layer-list' });
-    for (const layer of LAYER_KINDS) {
-      const row = el('button', { class: `layer-row${this.activeLayer === layer ? ' active' : ''}`, type: 'button' });
-      const glyph = el('span', { class: 'layer-glyph' });
-      glyph.append(icon(LAYER_ICONS[layer] ?? 'map'));
-      const text = el('span', { class: 'layer-text' });
-      text.append(el('span', { class: 'layer-name', text: t(`layer.${layer}`) }), el('span', { class: 'layer-desc', text: t(`layer.${layer}.desc`) }));
-      row.append(glyph, text);
-      if (this.activeLayer === layer) row.append(el('span', { class: 'check', text: '✓' }));
-      row.addEventListener('click', () => {
-        this.handlers.onLayer(layer);
-        this.setActiveLayer(layer);
-        this.setSheet(null);
-      });
-      list.append(row);
-    }
-    body.append(list);
-    const close = button(t('nav.close'), () => this.setSheet(null));
-    close.classList.add('ghost');
-    body.append(close);
-    this.setSheet('layers');
+    this.sheets.openLayers(this.activeLayer, this.layerMetric);
   }
 
   setActiveLayer(layer: LayerKind): void {
     this.activeLayer = layer;
-    renderLegend(this.layerLegend, layer);
+    this.chip.classList.toggle('with-legend', layer !== 'terrain');
+    renderLegend(this.layerLegend, layer, this.layerMetric);
+  }
+
+  setLayerMetric(metric: EcologyMetric): void {
+    this.layerMetric = metric;
+    renderLegend(this.layerLegend, this.activeLayer, metric);
   }
 
   get layer(): LayerKind {
@@ -371,33 +368,36 @@ export class Shell {
   }
 
   openSpeedSheet(): void {
-    if (this.sheetOpen === 'speed') {
-      this.setSheet(null);
-      return;
-    }
-    const body = this.sheet.querySelector('.sheet-body');
-    if (!body) return;
-    body.replaceChildren(el('h2', { text: t('speed.title') }), el('p', { class: 'sub', text: t('speed.hint') }));
-    const options: Array<[string, Speed]> = [
-      [t('speed.0'), 0],
-      [t('speed.1'), 1],
-      [t('speed.2'), 2],
-      [t('speed.4'), 4],
-      [t('speed.8'), 8],
-    ];
-    for (const [label, value] of options) {
-      const b = button(`${label}${this.currentSpeed === value ? ' •' : ''}`, () => {
-        this.handlers.onSpeed(value);
-        this.setSpeed(value);
-        this.setSheet(null);
-      }, { accent: this.currentSpeed === value });
-      b.classList.add('wide');
-      body.append(b);
-    }
-    this.setSheet('speed');
+    this.sheets.openSpeed(this.currentSpeed);
   }
 
-  // ------------------------------------------------------------------ panels
+
+  setPrefs(prefs: UiPrefs): void {
+    this.prefs = prefs;
+    applyPrefs(prefs);
+    this.relabel();
+  }
+
+  setMapStats(summary: WorldSummary): void {
+    this.chrome.setStats({ population: summary.population, settlements: summary.settlements, civs: summary.civs });
+  }
+
+  setScale(km: number): void {
+    this.chrome.setScale(km);
+  }
+
+  openSettingsSheet(): void {
+    this.sheets.openSettings(this.prefs);
+  }
+
+  startOnboarding(): void {
+    this.coach.start();
+  }
+
+  notifyInteraction(kind: 'settlement' | 'layer' | 'panel'): void {
+    this.coach.notify(kind);
+  }
+
 
   showPanel(tab?: PanelTab): void {
     this.panels?.show(tab);
@@ -437,14 +437,15 @@ export class Shell {
     this.speedBtn.setAttribute('aria-label', t('speed.title'));
     const buttons = this.ui.querySelectorAll<HTMLButtonElement>('.topbar .icon-btn');
     if (buttons[0]) {
-      buttons[0].setAttribute('aria-label', t('common.save'));
-      buttons[0].title = t('common.save');
+      buttons[0].setAttribute('aria-label', t('settings.title'));
+      buttons[0].title = t('settings.title');
     }
     if (buttons[1]) {
       buttons[1].setAttribute('aria-label', t('nav.menu'));
       buttons[1].title = t('nav.menu');
     }
-    renderLegend(this.layerLegend, this.activeLayer);
+    this.saveEl.setAttribute('aria-label', t('common.saveNow'));
+    renderLegend(this.layerLegend, this.activeLayer, this.layerMetric);
     this.setDate(this.lastDay);
     this.setSaveState(this.lastSaveState);
     this.panels?.relabel();
@@ -459,7 +460,6 @@ export class Shell {
     }
   }
 
-  // ------------------------------------------------------------------ misc
 
   toast(text: string): void {
     this.toastEl.textContent = text;

@@ -22,3 +22,20 @@ export function counterKey(key: string): string {
   };
   return t(map[key] ?? key);
 }
+
+/** A one-line interpretation at the top of a panel: what matters right now. */
+export function insight(kicker: string, value: string, tone: 'neutral' | 'warn' | 'danger' = 'neutral'): HTMLElement {
+  const box = el('div', { class: `insight ${tone}`.trim() });
+  const glyph = el('span', { class: 'insight-icon', text: '◆' });
+  const text = el('span', { class: 'insight-text' });
+  text.append(el('span', { class: 'insight-k', text: kicker }), el('span', { class: 'insight-v', text: value }));
+  box.append(glyph, text);
+  return box;
+}
+
+/** An inline, text-like navigation button used inside panel prose. */
+export function linkButton(label: string, onClick: () => void): HTMLButtonElement {
+  const b = el('button', { class: 'link-btn', type: 'button' }, label);
+  b.addEventListener('click', onClick);
+  return b;
+}

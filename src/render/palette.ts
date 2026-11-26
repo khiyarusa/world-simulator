@@ -11,7 +11,7 @@ export interface Rgb {
 
 export const BIOME_COLORS: readonly Rgb[] = [
   { r: 43, g: 74, b: 94 }, // 0 ocean (overridden by depth shading)
-  { r: 217, g: 201, b: 163 }, // 1 coast / beach
+  { r: 178, g: 171, b: 132 }, // 1 coast / beach (survey sand, deliberately quiet)
   { r: 61, g: 100, b: 120 }, // 2 lake
   { r: 122, g: 141, b: 96 }, // 3 river valley
   { r: 223, g: 230, b: 230 }, // 4 glacier
