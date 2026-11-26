@@ -313,7 +313,7 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
   }
 
   samples.sort((a, b) => a - b);
-  lastEventId = collectEvents(state, lastEventId, events);
+  collectEvents(state, lastEventId, events);
 
   const soc = state.society;
   const eventsBySeverity = new Array<number>(6).fill(0);

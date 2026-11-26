@@ -100,7 +100,7 @@ export function runMilitary(world: WorldState, day: number): void {
     if (civSettlementCount(world, civ) === 0) continue;
     let soldiers = 0;
     let barracks = 0;
-    let capital = world.civs.capital[civ] ?? 0;
+    const capital = world.civs.capital[civ] ?? 0;
     for (let i = 0; i < s.count; i++) {
       if ((s.civ[i] ?? 0) !== civ || !isAlive(world, i)) continue;
       soldiers += cohortOf(soc, i, COHORT.SOLDIERS);
@@ -414,8 +414,8 @@ export function runWar(world: WorldState, day: number): void {
     score = score > 100 ? 100 : score < -100 ? -100 : score;
     soc.warScore[k] = score;
 
-    let exhA = Math.min(100, (soc.warExhaustA[k] ?? 0) + 1 + (score < -20 ? 1 : 0));
-    let exhB = Math.min(100, (soc.warExhaustB[k] ?? 0) + 1 + (score > 20 ? 1 : 0));
+    const exhA = Math.min(100, (soc.warExhaustA[k] ?? 0) + 1 + (score < -20 ? 1 : 0));
+    const exhB = Math.min(100, (soc.warExhaustB[k] ?? 0) + 1 + (score > 20 ? 1 : 0));
     soc.warExhaustA[k] = exhA;
     soc.warExhaustB[k] = exhB;
 

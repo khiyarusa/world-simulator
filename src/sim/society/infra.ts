@@ -151,7 +151,7 @@ function chooseBuilding(world: WorldState, settlement: number): { bit: number; s
     if (bit === BIT.HARBOUR && !coastal(world, settlement)) continue;
     if (!canPay(world, settlement, cost)) continue;
 
-    let need = 0;
+    let need: number;
     switch (bit) {
       case BIT.GRANARY:
         need = Math.max(0, 45 - foodDays) * 4;
