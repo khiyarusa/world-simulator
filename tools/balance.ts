@@ -490,7 +490,6 @@ async function runSet(options: BalanceOptions): Promise<BalanceReport> {
     seedsDetail: detail,
   };
 }
-
 /** No-input run plus the harness-only blight run needed by the fourth arc. */
 export async function runBalance(options: BalanceOptions): Promise<BalanceReport> {
   const main = await runSet({ ...options, intervention: false });
