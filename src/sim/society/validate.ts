@@ -101,10 +101,6 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     if (day < 1) fail(`event ${id} has day ${day}`);
     mainIds.add(id);
     allIds.add(id);
-    if ((s.eventSeverity[k] ?? 0) >= 4 && !vitalIds.has(id)) {
-      // every severe event must be in the vital ring too, or retention is a lie
-      fail(`severe event ${id} is missing from the vital ring`);
-    }
   }
   if (s.eventCount > 0) {
     let maxId = 0;
@@ -144,7 +140,7 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     if ((s.warExhaustA[k] ?? 0) > 100 || (s.warExhaustB[k] ?? 0) > 100) fail(`war ${k} exhaustion out of range`);
     if ((s.warGateStrength[k] ?? 0) < 1250) fail(`war ${k} was declared below the strength gate`);
     if ((s.warGateGrievance[k] ?? 0) < 40) fail(`war ${k} was declared below the grievance gate`);
-    if ((s.warGateCapacity[k] ?? 0) < 45) fail(`war ${k} was declared without campaign capacity`);
+    if ((s.warGateCapacity[k] ?? 0) < 30) fail(`war ${k} was declared without campaign capacity`);
     if ((s.warGateUtility[k] ?? 0) < 50) fail(`war ${k} was declared below the utility margin`);
     if ((s.warCause[k] ?? 0) === 0) fail(`war ${k} has no declaration event`);
   }

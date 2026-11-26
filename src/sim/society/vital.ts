@@ -3,6 +3,8 @@
  * event ring wraps. A severe event is written to both rings with the same stable id, so a cause chain
  * can resolve an ancestor that the main ring has already evicted (docs/STAGE_3_DESIGN.md §9.3).
  */
+import type { SocietyState } from './state.ts';
+
 export const VITAL_CAPACITY = 4_096;
 
 export interface VitalRing {
@@ -65,4 +67,31 @@ export function appendVital(
 /** Oldest→newest iteration index for a ring position. */
 export function vitalIndex(vital: VitalRing, ordinal: number): number {
   return (vital.head - vital.count + ordinal + VITAL_CAPACITY * 2) % VITAL_CAPACITY;
+}
+
+/**
+ * Copy an event that is about to be cited as a cause into the vital ring, if it is not there yet.
+ * The main ring can evict a notable drought between the cause and the famine that cites it.
+ */
+export function retainEvent(soc: SocietyState, id: number): void {
+  if (id <= 0) return;
+  for (let k = 0; k < soc.vital.count; k++) if ((soc.vital.id[k] ?? 0) === id) return;
+  const cap = soc.eventId.length;
+  for (let n = 0; n < soc.eventCount; n++) {
+    const i = (soc.eventHead - soc.eventCount + n + cap * 2) % cap;
+    if ((soc.eventId[i] ?? 0) !== id) continue;
+    appendVital(
+      soc.vital,
+      id,
+      soc.eventDay[i] ?? 0,
+      soc.eventType[i] ?? 0,
+      soc.eventSeverity[i] ?? 0,
+      soc.eventPlace[i] ?? 0,
+      soc.eventActorA[i] ?? 0,
+      soc.eventActorB[i] ?? 0,
+      soc.eventMagnitude[i] ?? 0,
+      soc.eventCause[i] ?? 0,
+    );
+    return;
+  }
 }

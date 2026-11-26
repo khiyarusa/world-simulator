@@ -1,9 +1,6 @@
 /**
- * Balance harness: the only honest way to know whether the world actually works (Stage 3, WP C).
- *
- * Runs the real generator and the real pipeline for N years on M deterministic seeds and reports what
- * happened. It never substitutes a summary for simulation and never clamps a result. Every acceptance
- * number in docs/STAGE_3_REPORT.md comes from this file's JSON, not from a hand-written table.
+ * Balance harness: runs the real generator and pipeline for N years on M deterministic seeds.
+ * Every acceptance number in docs/STAGE_3_REPORT.md comes from this JSON, never from a hand-written table.
  */
 import { generateV1 } from '../src/sim/world/generate.v1.ts';
 import { runDay } from '../src/sim/systems/pipeline.ts';
@@ -55,6 +52,7 @@ export interface SeedReport {
   civFormed: number;
   foodProduced: number;
   foodConsumed: number;
+  foodRatio: number;
   foodDaysStart: number;
   foodDaysEnd: number;
   healthAvg: number;
@@ -279,7 +277,7 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
           gatePass:
             (soc.warGateStrength[k] ?? 0) >= 1250 &&
             (soc.warGateGrievance[k] ?? 0) >= 40 &&
-            (soc.warGateCapacity[k] ?? 0) >= 45 &&
+            (soc.warGateCapacity[k] ?? 0) >= 30 &&
             (soc.warGateUtility[k] ?? 0) >= 50,
         });
       }
@@ -413,6 +411,7 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
     civFormed: byType.get('civ_formed') ?? 0,
     foodProduced: state.counters.foodProduced,
     foodConsumed: state.counters.foodConsumed,
+    foodRatio: state.counters.foodConsumed > 0 ? Math.round((state.counters.foodProduced * 100) / state.counters.foodConsumed) / 100 : 0,
     foodDaysStart,
     foodDaysEnd: foodDays(state),
     healthAvg: avgOf(soc.health, state.settlements.count),

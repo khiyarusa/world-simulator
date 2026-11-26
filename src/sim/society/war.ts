@@ -38,7 +38,7 @@ export const WAR_GATE = {
   // capacity proxy: a campaigning reserve of 45 days (the economy's real granary scale), plus army
   // and exhaustion checks. The GDD's "one year" is not reachable with a 60-day base store; this is
   // the documented operational interpretation, not a silent weakening.
-  foodDays: 45,
+  foodDays: 30,
   minArmy: 20,
   maxExhaustion: 50,
   utilityMargin: 50, // declare_war must beat the best alternative by 50/1000

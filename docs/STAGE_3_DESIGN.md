@@ -72,64 +72,79 @@ Per-seed arc counts are reported as a diagnostic only. Arc predicates are declar
 matching. The player-blight arc is driven by an explicit harness command, because a no-input run cannot
 contain player input.
 
-## 5. Save schema v2
+## 5. Save schema v3
 
 | Shard | Content |
 |---|---|
-| `meta` | header, recipe, report, RNG states, counters, **schemaVersion 2** |
-| `terrain` | unchanged 12-grid binary block |
+| `meta` | header, recipe, report, RNG states, counters, **schemaVersion 3**, and the complete society block |
+| `terrain` | unchanged 12-grid binary block (vegetation and fertility are persisted after ecology runs) |
 | `settlements` | base identity (position, civ, tier, name, foundedDay) — unchanged layout |
 | `civs` | capital, colour, name |
-| *(meta)* | the society block travels **inside the meta shard** (D-44): the four-shard set is unchanged, so the Stage 2.1 completeness and recovery rules stay valid for every historical save |
 
-v2 is a superset of v1; `SHARD_NAMES` gains `society`, so a v2 generation without it is invalid (D-36
-still applies) and a v1 generation is recognised by its four-shard set plus `schemaVersion: 1`.
+The four-shard set is unchanged: the society block travels **inside the meta shard** (D-44), so the
+Stage 2.1 completeness and recovery rules remain valid for every historical save. There is no `society`
+shard and `SHARD_NAMES` does not change (this corrects an earlier draft of this document).
 
-**Migration 1→2** is pure: decode the v1 shard set, then initialise `SocietyState` deterministically from
-the legacy settlement population — cohorts are split by a fixed per-mille table whose sum is exactly
-1000, with the rounding remainder added to `farmers`, so `Σ cohorts == legacy population` exactly. No
-terrain regeneration, no clock, no RNG.
+Schema 3 adds trade routes, treaties, wars (with their four gate values), military state, prices,
+technology progress, the occupation/immunity markers and the vital-event ring. A schema-2 block still
+decodes: its missing structures are empty, which is exactly the world that version described, and the
+codec expands its used-civ-corner matrices into the fixed 12-civ stride. A schema-3 block missing any of
+those structures is rejected as corrupt.
 
-## 6. Integrity contract v3
+**Migrations** are pure and ordered: 1→2 initialises the society from the legacy population with a fixed
+cohort table whose sum is exactly 1000 (remainder to farmers), and 2→3 stamps the new document version
+while the codec fills the structures a v2 world never had. No terrain regeneration, no seed change, no
+clock, no RNG. The migration loop verifies that each step advances exactly one version, so a step cannot
+be skipped.
 
-`worldChecksum` gains the society block (cohort total, stocks, health/stability, relations, routes,
-war flags, event count and tail ids) and bumps its domain tag to `CSM3`. `gridsChecksum` stays
+## 6. Integrity contract v5
+
+`worldChecksum` covers the complete persisted state: grids, clock, recipe, every counter, every RNG
+stream, settlement identity, all cohort/stock/cap/carry/price/occupation values, treasuries,
+health/stability/literacy, infrastructure/flags/occupation, every culture axis, technology flag,
+research progress, legitimacy/army/exhaustion, the full relation and grievance matrices, climate cells,
+every route, treaty and war row (including the four gate values), every event and vital-event row,
+every decision and chronicle row, and the civ identity store. Domain tag `CSM5`. `gridsChecksum` stays
 domain-free so the golden content fixture remains meaningful.
 
-## 7. Phase map (the 20 declared phases, now implemented)
+## 7. Phase map (20 systems, 13 pipeline stages)
 
-| # | Phase | Cadence | Writes |
+The brief allows a different number of pipeline stages if the design is formally reconciled and no
+subsystem is unowned. Some systems share one pass over settlements by construction (production,
+extraction and craft are one loop; consumption, health and stability are one loop), so the pipeline
+declares 13 stages and each stage names its owner module.
+
+| Design stage | Cadence | Owner | Pipeline stage |
 |---|---|---|---|
-| 1 | climate | monthly | region precipitation/temperature anomalies, drought/flood flags |
-| 2 | ecology | daily (bounded) | vegetation, fertility, fire, epidemic pressure |
-| 3 | fertility | monthly | soil recovery/erosion |
-| 4 | agriculture | daily | food production (carry-exact) |
-| 5 | extraction | daily | wood/stone/metal |
-| 6 | craft | daily | goods from metal+wood |
-| 7 | consumption | daily | food/water/fuel draw, spoilage, treasuries |
-| 8 | health | daily | health from sufficiency, sanitation, epidemic |
-| 9 | demographics | monthly | births, deaths per cohort |
-| 10 | stability | daily | stability from food/health/tax/war |
-| 11 | migration | monthly | population transfers (conserving) |
-| 12 | trade | monthly | **deferred** (Stage 3.2) |
-| 13 | build | monthly | **deferred** (Stage 3.2) |
-| 14 | military | monthly | **deferred** (Stage 3.2) |
-| 15 | diplomacy | monthly | **deferred** (Stage 3.2) |
-| 16 | war | monthly | **deferred** (Stage 3.2) |
-| 17 | settlement-growth | monthly | tiers, abandonment (founding deferred) |
-| 18 | civilization | monthly | **deferred** (Stage 3.2) |
-| 19 | events | daily | state-transition events with forward causes |
-| 20 | chronicle | yearly | per-civ yearly aggregates |
+| clock / calendar | daily | `core/clock.ts` | `runDay` |
+| climate | monthly | `society/living.ts:runClimate` | `climate` |
+| ecology / fertility | monthly | `society/ecology.ts:runEcology` | `ecology` |
+| labour / occupation | monthly | `society/occupations.ts:runOccupations` | `labour` |
+| agriculture, extraction, craft | daily | `society/living.ts:runProduction` | `agriculture` |
+| consumption, health, stability, spoilage | daily | `society/living.ts:runConsumption` | `consumption` |
+| demography + ageing | yearly | `society/living.ts:runDemographics/runAgeing` | `runDay` year end |
+| migration | monthly | `society/living.ts:runMigration` | `migration` |
+| trade, prices, treasury | monthly | `society/trade.ts`, `society/economy.ts` | `trade` |
+| infrastructure decisions | monthly | `society/infra.ts:runConstruction` | `build` |
+| military | monthly | `society/war.ts:runMilitary` | `military` |
+| diplomacy and treaties | yearly | `society/diplomacy.ts` | `diplomacy` |
+| war and peace | monthly | `society/war.ts:runWar` | `war` |
+| settlement lifecycle and founding | monthly | `society/growth.ts:runGrowth` | `settlement-growth` |
+| civilization, culture, technology | yearly/monthly | `society/civ.ts` | `civilization` |
+| events | on transition | `society/state.ts:appendEvent` | emitted by owners |
+| chronicle | yearly | `society/living.ts:runChronicle` | `chronicle` |
 
-Phases 1–11, 17 (partly), 19 and 20 are implemented. The rest are declared and marked deferred in the
-pipeline source; no phase pretends to work. `docs/STAGE_3_REPORT.md` §5 records the consequences for the
-acceptance gates.
+The full 22-step order in the brief is preserved as the *conceptual* order; the pipeline table above is
+the authoritative implementation order. No phase is a placeholder.
 
 ## 8. Invariants
 
 INV-1…INV-10 keep their meaning. Stage 3 adds: cohort sum equals population; stocks non-negative and
-within caps; workforce shares sum to 1000 ‰; relations within ±100; every event cause resolves to an
-earlier event; no route references a missing settlement; war participants are distinct and living.
+within caps; workforce shares sum to 1000 ‰; prices within 250–3000 ‰; relations within ±100; every
+event cause resolves to an earlier retained event or the explicit root marker `-1`; every severity-4/5
+event is present in the vital ring; no route references a missing settlement; treaty and war
+participants are distinct and valid; every war's persisted gate values satisfy the gate; armies and
+exhaustion are non-negative and bounded; treasuries never go negative.
 
 ## 9. What Stage 3 deliberately does not do
 

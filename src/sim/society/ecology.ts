@@ -20,6 +20,7 @@ import {
 } from './state.ts';
 import { FLAG_DROUGHT, isAlive, removePeople } from './common.ts';
 import { withStream } from './streams.ts';
+import { retainEvent } from './vital.ts';
 import { damageInfrastructure } from './infra.ts';
 
 /** Most a tile can recover to, given its moisture (vegetation is a 0..255 index). */
@@ -74,7 +75,7 @@ export function runEcology(world: WorldState, day: number): void {
     const famine = soc.lastFamineEvent[i] ?? 0;
     const freshFamine = day - (soc.historyDay[i * 2 + 1] ?? 0) <= 720;
     const lastEpidemic = soc.lastEpidemicDay[i] ?? 0;
-    if (pop >= 120 && health < 45 && day - lastEpidemic >= 720) {
+    if (pop >= 120 && health < 45 && day - lastEpidemic >= 1080) {
       // a recovered population keeps its immunity for two years; without that window an outbreak
       // feeds its own risk and deletes the settlement
       const risk = Math.min(60, (45 - health) * 2 + (pop > 2_000 ? 20 : 0));
@@ -83,7 +84,7 @@ export function runEcology(world: WorldState, day: number): void {
         outbreak = rng.chance(risk);
       });
       if (outbreak) {
-        const deaths = removePeople(soc, i, Math.max(1, Math.floor((pop * (20 + (45 - health))) / 1000)));
+        const deaths = removePeople(soc, i, Math.max(1, Math.floor((pop * (10 + (45 - health))) / 1000)));
         world.counters.deaths += deaths;
         world.counters.epidemicDeaths += deaths;
         soc.health[i] = Math.max(0, health - 10);
@@ -125,6 +126,7 @@ export function runEcology(world: WorldState, day: number): void {
         const lost = damageInfrastructure(world, i);
         soc.health[i] = Math.max(0, (soc.health[i] ?? 60) - 4);
         const droughtEvent = soc.lastDroughtEvent[i] ?? 0;
+        if (droughtEvent > 0) retainEvent(soc, droughtEvent);
         appendEvent(
           soc,
           day,
@@ -191,6 +193,7 @@ export function applyBlight(world: WorldState, centre: number, day: number, radi
     const food = stockOf(soc, i, RES.FOOD);
     addStock(soc, i, RES.FOOD, -Math.floor((food * 80) / 100));
     soc.health[i] = Math.max(0, (soc.health[i] ?? 60) - 10);
+    soc.stability[i] = Math.max(0, (soc.stability[i] ?? 60) - 15);
     affected++;
   }
   appendEvent(

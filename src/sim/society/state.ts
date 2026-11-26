@@ -56,7 +56,8 @@ export const INFRA = [
 ] as const;
 export const INFRA_COUNT = INFRA.length;
 
-export const EVENT_CAPACITY = 20_000;
+export const EVENT_CAPACITY = 16_000;
+// (the vital ring below keeps 4096 severe rows; 16k + 4k rows is what keeps a year-200 raw save < 1.2 MB)
 export const DECISION_CAPACITY = 64;
 export const ROUTE_CAPACITY = 400;
 export const TREATY_CAPACITY = 64;

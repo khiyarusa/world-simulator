@@ -34,8 +34,8 @@ export const RULE = {
   foodPerPerson: 1000, // milli-units per person per day (1.0 unit)
   waterPerPerson: 1200,
   fuelPerPerson: 150,
-  baseBirthPm: 32, // 3.2 %/year
-  baseDeathPm: 14,
+  baseBirthPm: 34, // 3.4 %/year
+  baseDeathPm: 12,
   spoilagePm: 1, // per day
   starvationDeathPm: 900, // of unmet person-days
   migrationMaxPm: 20, // 2 % of population per month
@@ -51,6 +51,7 @@ const SEASON_YIELD_PM = [500, 800, 1100, 1000] as const;
 import { FLAG_DROUGHT, FLAG_RUINED, FLAG_STARVING, isAlive } from './common.ts';
 import { landCapacity } from './economy.ts';
 import { withStream } from './streams.ts';
+import { retainEvent } from './vital.ts';
 
 export { isAlive } from './common.ts';
 
@@ -256,6 +257,7 @@ export function runConsumption(world: WorldState, day: number): void {
       const droughtCause = soc.lastDroughtEvent[i] ?? 0;
       const freshDrought = day - (soc.historyDay[i * 2] ?? 0) <= 720;
       const cause = droughtCause > 0 && freshDrought ? droughtCause : -1;
+      if (cause > 0) retainEvent(soc, cause);
       soc.lastFamineEvent[i] = appendEvent(
         world.society,
         day,
@@ -294,7 +296,7 @@ export function runDemographics(world: WorldState): void {
     // births: 3.2 %/yr scaled by health AND by the food reserve. Fertility falling before reserves run
     // out is what turns a hard overshoot into a soft landing (the balance harness showed the overshoot).
     const reserveDays = Math.floor(stockOf(soc, i, RES.FOOD) / Math.max(1, pop));
-    const reservePm = Math.min(1000, Math.max(300, reserveDays * 15));
+    const reservePm = Math.min(1000, Math.max(400, reserveDays * 18));
     let birthPm = mulDiv(RULE.baseBirthPm, Math.max(0, 60 + health), 100);
     birthPm = mulDiv(birthPm, reservePm, 1000);
     if (starving) birthPm = mulDiv(birthPm, 400, 1000);
