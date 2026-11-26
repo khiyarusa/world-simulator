@@ -20,7 +20,7 @@ import {
   stockOf,
   INFRA,
 } from './state.ts';
-import { distanceSq, isAlive, relationOf, routeIndex } from './common.ts';
+import { distanceSq, isAlive, relationOf } from './common.ts';
 import { RESERVE_DAYS, recomputePrices, runTreasury } from './economy.ts';
 
 /** Units a settlement is willing to sell, above its own working reserve. */
@@ -111,6 +111,15 @@ function openRoute(world: WorldState, a: number, b: number, day: number, score: 
 function createRoutes(world: WorldState, day: number): void {
   const soc = world.society;
   const s = world.settlements;
+  // one pair lookup for the whole month: scanning the route list per candidate pair was the
+  // quadratic-in-routes hotspot the 200-settlement harness exposed
+  const pairs = new Uint8Array(s.x.length * s.x.length);
+  for (let k = 0; k < soc.routeCount; k++) {
+    const a = soc.routeA[k] ?? 0;
+    const b = soc.routeB[k] ?? 0;
+    pairs[a * s.x.length + b] = 1;
+    pairs[b * s.x.length + a] = 1;
+  }
   let opened = 0;
   for (let a = 0; a < s.count && opened < 4; a++) {
     if (!isAlive(world, a)) continue;
@@ -119,7 +128,7 @@ function createRoutes(world: WorldState, day: number): void {
     let bestScore = 0;
     for (let b = a + 1; b < s.count; b++) {
       if (!isAlive(world, b)) continue;
-      if (routeIndex(soc, a, b) >= 0) continue;
+      if (pairs[a * s.x.length + b] !== 0) continue;
       const d2 = distanceSq(world, a, b);
       if (d2 > 22 * 22) continue;
       const cb = s.civ[b] ?? 0;
@@ -134,7 +143,11 @@ function createRoutes(world: WorldState, day: number): void {
       }
     }
     if (bestB < 0 || bestScore < 60) continue;
-    if (openRoute(world, a, bestB, day, bestScore > 1000 ? 1000 : bestScore)) opened++;
+    if (openRoute(world, a, bestB, day, bestScore > 1000 ? 1000 : bestScore)) {
+      pairs[a * s.x.length + bestB] = 1;
+      pairs[bestB * s.x.length + a] = 1;
+      opened++;
+    }
   }
 }
 

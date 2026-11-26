@@ -80,6 +80,24 @@ export function updateRelations(world: WorldState): void {
   const soc = world.society;
   const s = world.settlements;
   const n = world.civs.count;
+  // border contact, computed once per year: the per-pair settlement scan was quadratic in civ pairs
+  const border = new Uint16Array(CIV_STRIDE * CIV_STRIDE);
+  for (let i = 0; i < s.count; i++) {
+    if (!isAlive(world, i)) continue;
+    const ci = s.civ[i] ?? 0;
+    for (let j = i + 1; j < s.count; j++) {
+      if (!isAlive(world, j)) continue;
+      const cj = s.civ[j] ?? 0;
+      if (ci === cj) continue;
+      const dx = (s.x[i] ?? 0) - (s.x[j] ?? 0);
+      const dy = (s.y[i] ?? 0) - (s.y[j] ?? 0);
+      if (dx * dx + dy * dy > 100) continue;
+      const at = ci * CIV_STRIDE + cj;
+      border[at] = (border[at] ?? 0) + 1;
+      const bt = cj * CIV_STRIDE + ci;
+      border[bt] = (border[bt] ?? 0) + 1;
+    }
+  }
   for (let a = 0; a < n; a++) {
     if (civSettlementCount(world, a) === 0) continue;
     for (let b = a + 1; b < n; b++) {
@@ -93,21 +111,9 @@ export function updateRelations(world: WorldState): void {
         if ((ra === a && rb === b) || (ra === b && rb === a)) routes++;
       }
       delta += Math.min(4, routes);
-      // shared border friction: near settlements of different civilizations
-      let border = 0;
-      for (let i = 0; i < s.count && border < 4; i++) {
-        if ((s.civ[i] ?? 0) !== a || !isAlive(world, i)) continue;
-        for (let j = 0; j < s.count; j++) {
-          if ((s.civ[j] ?? 0) !== b || !isAlive(world, j)) continue;
-          const dx = (s.x[i] ?? 0) - (s.x[j] ?? 0);
-          const dy = (s.y[i] ?? 0) - (s.y[j] ?? 0);
-          if (dx * dx + dy * dy <= 10 * 10) {
-            border++;
-            break;
-          }
-        }
-      }
-      delta -= Math.min(3, border);
+      // shared border friction, from the once-per-year contact matrix
+      const contact = border[a * CIV_STRIDE + b] ?? 0;
+      delta -= Math.min(3, contact);
       // cultural distance: unlike civilizations drift apart
       let distance = 0;
       for (let axis = 0; axis < 3; axis++) {
@@ -123,7 +129,7 @@ export function updateRelations(world: WorldState): void {
       // grievance: friction accumulates it, quiet neighbours and treaties erode it
       let grievance = soc.grievance[a * CIV_STRIDE + b] ?? 0;
       if (atWar(soc, a, b)) grievance += 3;
-      else if (border > 0) grievance += border;
+      else if (contact > 0) grievance += Math.min(4, contact);
       else if (routes > 0) grievance -= 3;
       else grievance -= 2;
       if (treatyBetween(soc, a, b, TREATY.BORDER)) grievance -= 2;

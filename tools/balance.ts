@@ -12,6 +12,7 @@ import { totalPopulation } from '../src/sim/society/living.ts';
 import { populationOf, EVENT_TYPE_NAMES, EVENT_CAPACITY, CIV_STRIDE } from '../src/sim/society/state.ts';
 import { auditSociety } from '../src/sim/society/audit.ts';
 import { applyBlight } from '../src/sim/society/ecology.ts';
+import { evaluateWarGate } from '../src/sim/society/war.ts';
 import { seedOf } from '../src/core/seed.ts';
 import { captureWorld } from '../src/worker/snapshot.ts';
 import { encodeSnapshot } from '../src/worker/serialize.ts';
@@ -85,6 +86,7 @@ export interface SeedReport {
   conservationFailures: number;
   invariantFailures: string[];
   warSamples: WarSample[];
+  warDiagnostics: { maxStrength: number; maxGrievance: number; maxCapacity: number; maxUtility: number; passingPairs: number };
   tickP50: number;
   tickP95: number;
   tickMax: number;
@@ -247,6 +249,11 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
   let saveMs = 0;
   let blightDay = 0;
   let blightCiv = -1;
+  let maxStrength = 0;
+  let maxGrievance = 0;
+  let maxCapacity = 0;
+  let maxUtility = 0;
+  let passingPairs = 0;
   const days = options.years * 360;
   const interventionYear = Math.min(150, Math.max(10, Math.floor(options.years / 2)));
 
@@ -295,6 +302,19 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
     if (d % 360 === 0) {
       lastEventId = collectEvents(state, lastEventId, events);
       years.push(sampleYear(state, d / 360, state.society.routeCount));
+      if (d % 3600 === 0) {
+      for (let a = 0; a < state.civs.count; a++) {
+        for (let b = 0; b < state.civs.count; b++) {
+          if (a === b) continue;
+          const gate = evaluateWarGate(state, a, b);
+          if (gate.strength > maxStrength) maxStrength = gate.strength;
+          if (gate.grievance > maxGrievance) maxGrievance = gate.grievance;
+          if (gate.capacity > maxCapacity) maxCapacity = gate.capacity;
+          if (gate.utility > maxUtility) maxUtility = gate.utility;
+          if (gate.pass) passingPairs++;
+        }
+      }
+      }
       if (options.intervention && d === interventionYear * 360) {
         let capital = 0;
         let best = -1;
@@ -412,6 +432,7 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
     conservationFailures,
     invariantFailures: failures,
     warSamples,
+    warDiagnostics: { maxStrength, maxGrievance, maxCapacity, maxUtility, passingPairs },
     tickP50: round(percentile(samples, 0.5)),
     tickP95: round(percentile(samples, 0.95)),
     tickMax: round(samples[samples.length - 1] ?? 0),

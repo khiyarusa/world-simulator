@@ -24,7 +24,10 @@ for (const s of seeds) {
       `settlers ${s.livingSettlements}/${s.settlementsEnd}  civs ${s.civs}  ` +
       `births ${s.births} deaths ${s.deaths} (starve ${s.starvationDeaths}, plague ${s.epidemicDeaths}, war ${s.warDeaths})  ` +
       `food ${s.foodDaysEnd}d  routes ${s.routesOpened}/${s.routesLost} kept ${s.routesEnd}  wars ${s.warsDeclared}/${s.warsEnded}  ` +
-      `events ${s.eventCount}  save ${(s.saveBytesRaw / 1048576).toFixed(3)}MB/${s.saveMs}ms  ` +
+      `events ${s.eventCount}  ` +
+      `gate best str ${s.warDiagnostics.maxStrength} grief ${s.warDiagnostics.maxGrievance} ` +
+      `cap ${s.warDiagnostics.maxCapacity} util ${s.warDiagnostics.maxUtility} pass ${s.warDiagnostics.passingPairs}  ` +
+      `save ${(s.saveBytesRaw / 1048576).toFixed(3)}MB/${s.saveMs}ms  ` +
       `tick p95 ${s.tickP95}ms  ${s.invariantFailures.length ? 'FAIL' : 'ok'}`,
   );
   for (const arc of s.arcs) if (arc.present) console.log(`    arc ${arc.type}: ${arc.evidence}`);
