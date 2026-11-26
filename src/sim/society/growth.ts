@@ -21,7 +21,7 @@ import {
   populationOf,
   stockOf,
 } from './state.ts';
-import { isAlive } from './common.ts';
+import { FLAG_RUINED, isAlive } from './common.ts';
 import { recalcCaps } from './economy.ts';
 import { syncPopulation } from './living.ts';
 
@@ -109,7 +109,7 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
   s.count = index + 1;
 
   // move 40 % of the parent (capped), youngest cohorts first so the daughter can grow
-  const target = Math.min(260, Math.floor(populationOf(soc, parent) * 400 / 1000));
+  const target = Math.min(500, Math.floor(populationOf(soc, parent) * 400 / 1000));
   let left = target;
   for (const c of [COHORT.YOUTH, COHORT.CHILDREN, COHORT.FARMERS, COHORT.EXTRACTORS, COHORT.CRAFTERS]) {
     if (left <= 0) break;
@@ -143,8 +143,27 @@ export function runGrowth(world: WorldState, day: number): void {
   const s = world.settlements;
 
   for (let i = 0; i < s.count; i++) {
-    if (!isAlive(world, i)) continue;
+    if (((soc.flags[i] ?? 0) & FLAG_RUINED) !== 0) continue;
     const pop = populationOf(soc, i);
+    if (pop <= 0) {
+      // a settlement that lost its last person is abandoned, and the event names the real cause
+      soc.flags[i] = (soc.flags[i] ?? 0) | FLAG_RUINED;
+      world.counters.abandonments += 1;
+      const famine = soc.lastFamineEvent[i] ?? 0;
+      appendEvent(
+        world.society,
+        day,
+        EVENT_TYPE.SETTLEMENT_ABANDONED,
+        SEVERITY.HISTORIC,
+        i,
+        s.civ[i] ?? 0,
+        0,
+        0,
+        famine > 0 ? famine : -1,
+      );
+      continue;
+    }
+    if (!isAlive(world, i)) continue;
     const foodDays = Math.floor(stockOf(soc, i, RES.FOOD) / Math.max(1, pop));
 
     // --- sustained surplus, not one good month: promotion needs two consecutive years
@@ -153,7 +172,7 @@ export function runGrowth(world: WorldState, day: number): void {
 
     // --- founding: prosperity plus room founds a daughter settlement (transfer, not creation)
     if (
-      pop >= 220 &&
+      pop >= 900 &&
       (soc.stability[i] ?? 0) >= 55 &&
       foodDays > 20 &&
       foodDays < 120 && // a settlement that hoards for a century is not the one that expands

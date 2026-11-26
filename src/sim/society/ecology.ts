@@ -180,11 +180,12 @@ export function applyBlight(world: WorldState, centre: number, day: number, radi
     const dy = (s.y[i] ?? 0) - cy;
     if (dx * dx + dy * dy > radius * radius) continue;
     const tile = (s.y[i] ?? 0) * world.width + (s.x[i] ?? 0);
-    world.grids.vegetation[tile] = Math.max(0, (world.grids.vegetation[tile] ?? 0) - 70);
-    world.grids.fertility[tile] = Math.max(5, (world.grids.fertility[tile] ?? 0) - 40);
+    world.grids.vegetation[tile] = Math.max(0, (world.grids.vegetation[tile] ?? 0) - 90);
+    world.grids.fertility[tile] = Math.max(5, (world.grids.fertility[tile] ?? 0) - 50);
+    // a blight destroys the standing crop, not just the soil: 80 % of the store is lost
     const food = stockOf(soc, i, RES.FOOD);
-    addStock(soc, i, RES.FOOD, -Math.floor(food / 5));
-    soc.health[i] = Math.max(0, (soc.health[i] ?? 60) - 5);
+    addStock(soc, i, RES.FOOD, -Math.floor((food * 80) / 100));
+    soc.health[i] = Math.max(0, (soc.health[i] ?? 60) - 10);
     affected++;
   }
   appendEvent(

@@ -209,6 +209,20 @@ export function worldChecksum(state: WorldState): number {
     crc = crc32OfU32(crc, soc.eventCause[i] ?? 0);
   }
 
+  crc = crc32OfU32(crc, soc.vital.count);
+  for (let n = 0; n < soc.vital.count; n++) {
+    const i = (soc.vital.head - soc.vital.count + n + soc.vital.id.length * 2) % soc.vital.id.length;
+    crc = crc32OfU32(crc, soc.vital.id[i] ?? 0);
+    crc = crc32OfU32(crc, soc.vital.day[i] ?? 0);
+    crc = crc32OfU32(crc, soc.vital.type[i] ?? 0);
+    crc = crc32OfU32(crc, soc.vital.severity[i] ?? 0);
+    crc = crc32OfU32(crc, soc.vital.place[i] ?? 0);
+    crc = crc32OfU32(crc, soc.vital.actorA[i] ?? 0);
+    crc = crc32OfU32(crc, soc.vital.actorB[i] ?? 0);
+    crc = crc32OfU32(crc, soc.vital.magnitude[i] ?? 0);
+    crc = crc32OfU32(crc, soc.vital.cause[i] ?? 0);
+  }
+
   crc = crc32OfU32(crc, soc.decisionCount);
   for (let n = 0; n < soc.decisionCount; n++) {
     const i = (soc.decisionHead - soc.decisionCount + n + soc.decisionDay.length * 2) % soc.decisionDay.length;

@@ -8,6 +8,7 @@
  * growth exists anywhere in this file.
  */
 import { CAPACITY } from '../state/worldState.ts';
+import { allocateVitalRing, appendVital, type VitalRing } from './vital.ts';
 
 export const COHORT_COUNT = 8;
 /** Civilization-major arrays use this fixed stride. It must never follow `civs.count`, or a new
@@ -235,6 +236,9 @@ export interface SocietyState {
   chronicleSettlements: Uint16Array;
   chronicleEvents: Uint8Array;
 
+  /** severity-4/5 history that survives the main ring's wrap (docs/STAGE_3_DESIGN.md §9.3) */
+  vital: VitalRing;
+
   // --- trade routes: simulation edges, never rendered entities (GDD §9.3)
   routeCount: number;
   routeA: Uint16Array;
@@ -342,6 +346,8 @@ export function allocateSociety(): SocietyState {
     chronicleSettlements: new Uint16Array(4096),
     chronicleEvents: new Uint8Array(4096),
 
+    vital: allocateVitalRing(),
+
     routeCount: 0,
     routeA: new Uint16Array(ROUTE_CAPACITY),
     routeB: new Uint16Array(ROUTE_CAPACITY),
@@ -440,6 +446,10 @@ export function appendEvent(
   soc.eventCause[index] = cause;
   soc.eventHead = (index + 1) % EVENT_CAPACITY;
   if (soc.eventCount < EVENT_CAPACITY) soc.eventCount++;
+  // severe history is kept even after the main ring overwrites it
+  if (severity >= 4) {
+    appendVital(soc.vital, id, day, type, severity, place, actorA, actorB, magnitude, cause);
+  }
   return id;
 }
 

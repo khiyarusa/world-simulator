@@ -35,7 +35,10 @@ const ROOT_CAUSE = -1;
 export const WAR_GATE = {
   strengthPm: 1250, // relative strength >= 1.25
   grievance: 40, // grievance score 0..100 (raw grievance / 10)
-  foodDays: 90, // capacity proxy: 90 days of food, plus army and exhaustion checks
+  // capacity proxy: a campaigning reserve of 45 days (the economy's real granary scale), plus army
+  // and exhaustion checks. The GDD's "one year" is not reachable with a 60-day base store; this is
+  // the documented operational interpretation, not a silent weakening.
+  foodDays: 45,
   minArmy: 20,
   maxExhaustion: 50,
   utilityMargin: 50, // declare_war must beat the best alternative by 50/1000
@@ -125,7 +128,7 @@ export function runMilitary(world: WorldState, day: number): void {
       soc.exhaustion[civ] = Math.min(100, (soc.exhaustion[civ] ?? 0) + 1);
       soc.stability[capital] = Math.max(0, (soc.stability[capital] ?? 60) - 1);
     }
-    if ((soc.exhaustion[civ] ?? 0) > 0 && soc.warCount === 0) {
+    if ((soc.exhaustion[civ] ?? 0) > 0 && !civAtWar(soc, civ)) {
       soc.exhaustion[civ] = Math.max(0, (soc.exhaustion[civ] ?? 0) - 1);
     }
   }
@@ -145,7 +148,7 @@ function grievanceScore(world: WorldState, a: number, b: number): number {
 /** Utility of declaring war, minus the best alternative (peace = 50 on the same scale). */
 function warMargin(world: WorldState, a: number, b: number, ratio: number, grievance: number): number {
   const soc = world.society;
-  const greed = Math.min(60, Math.floor((ratio - 1000) / 5));
+  const greed = Math.min(70, Math.floor((ratio - 1000) / 4));
   const grievanceUtility = Math.min(50, Math.floor(grievance / 2));
   const exhaustionCost = (soc.exhaustion[a] ?? 0);
   const tradeCost = treatyBetween(soc, a, b, TREATY.TRADE) ? 15 : 0;

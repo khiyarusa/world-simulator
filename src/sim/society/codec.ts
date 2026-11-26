@@ -12,6 +12,7 @@
 import { SimError } from '../../core/errors.ts';
 import type { WorldState } from '../state/worldState.ts';
 import { validateSociety } from './validate.ts';
+import { appendVital, VITAL_CAPACITY } from './vital.ts';
 import {
   allocateSociety,
   COHORT_COUNT,
@@ -59,6 +60,7 @@ export interface SocietyDoc {
   regionPrecip: Numbers;
   regionTempAnomaly: Numbers;
   events: { count: number; nextId: number; rows: Numbers };
+  vital?: { count: number; rows: Numbers };
   decisions: { count: number; rows: Numbers };
   chronicle: { count: number; rows: Numbers };
   routes: { count: number; rows: Numbers };
@@ -110,6 +112,22 @@ export function encodeSociety(world: WorldState): SocietyDoc {
       s.chroniclePop[i] ?? 0,
       s.chronicleSettlements[i] ?? 0,
       s.chronicleEvents[i] ?? 0,
+    );
+  }
+
+  const vital: Numbers = [];
+  for (let n = 0; n < s.vital.count; n++) {
+    const i = (s.vital.head - s.vital.count + n + VITAL_CAPACITY * 2) % VITAL_CAPACITY;
+    vital.push(
+      s.vital.id[i] ?? 0,
+      s.vital.day[i] ?? 0,
+      s.vital.type[i] ?? 0,
+      s.vital.severity[i] ?? 0,
+      s.vital.place[i] ?? 0,
+      s.vital.actorA[i] ?? 0,
+      s.vital.actorB[i] ?? 0,
+      s.vital.magnitude[i] ?? 0,
+      s.vital.cause[i] ?? 0,
     );
   }
 
@@ -188,6 +206,7 @@ export function encodeSociety(world: WorldState): SocietyDoc {
     regionPrecip: arr(s.regionPrecip, 16),
     regionTempAnomaly: arr(s.regionTempAnomaly, 16),
     events: { count: s.eventCount, nextId: s.nextEventId, rows },
+    vital: { count: s.vital.count, rows: vital },
     decisions: { count: s.decisionCount, rows: decisions },
     chronicle: { count: s.chronicleCount, rows: chronicle },
     routes: { count: s.routeCount, rows: routes },
@@ -231,8 +250,12 @@ function expectRows(value: unknown, label: string, stride: number, cap: number):
  * rows, so a genuine v2 block is expanded into the fixed stride instead of being reinterpreted.
  */
 function civArray(value: unknown, label: string, width: number, civs: number, legacy: boolean, fill: number): Numbers {
-  if (!Array.isArray(value)) throw new SimError('SAVE_CORRUPT', `society.${label} is not an array`);
   const fixed = CIV_STRIDE * width;
+  if (value === undefined) {
+    if (!legacy) throw new SimError('SAVE_CORRUPT', `society.${label} is missing`);
+    return new Array<number>(fixed).fill(fill);
+  }
+  if (!Array.isArray(value)) throw new SimError('SAVE_CORRUPT', `society.${label} is not an array`);
   if (!legacy) return expectArray(value, label, fixed);
   if (value.length === fixed) return value as Numbers;
   if (value.length !== civs * width) {
@@ -247,8 +270,12 @@ function civArray(value: unknown, label: string, width: number, civs: number, le
 
 /** A civ×civ matrix: schema 3 is 12×12, schema 2 stored only the used `civs × civs` corner. */
 function civMatrix(value: unknown, label: string, civs: number, legacy: boolean): Numbers {
-  if (!Array.isArray(value)) throw new SimError('SAVE_CORRUPT', `society.${label} is not an array`);
   const fixed = CIV_STRIDE * CIV_STRIDE;
+  if (value === undefined) {
+    if (!legacy) throw new SimError('SAVE_CORRUPT', `society.${label} is missing`);
+    return new Array<number>(fixed).fill(0);
+  }
+  if (!Array.isArray(value)) throw new SimError('SAVE_CORRUPT', `society.${label} is not an array`);
   if (!legacy) return expectArray(value, label, fixed);
   if (value.length === fixed) return value as Numbers;
   if (value.length !== civs * civs) {
@@ -356,6 +383,43 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
     s.chronicleEvents[k] = chronicle[o + 4] ?? 0;
   }
   s.chronicleHead = s.chronicleCount % 4096;
+
+  if (legacy || d.vital === undefined) {
+    // an older block kept no vital ring; rebuild it from the severe events it still carries
+    for (let k = 0; k < s.eventCount; k++) {
+      if ((s.eventSeverity[k] ?? 0) >= 4) {
+        appendVital(
+          s.vital,
+          s.eventId[k] ?? 0,
+          s.eventDay[k] ?? 0,
+          s.eventType[k] ?? 0,
+          s.eventSeverity[k] ?? 0,
+          s.eventPlace[k] ?? 0,
+          s.eventActorA[k] ?? 0,
+          s.eventActorB[k] ?? 0,
+          s.eventMagnitude[k] ?? 0,
+          s.eventCause[k] ?? 0,
+        );
+      }
+    }
+  } else {
+    const vitalRows = optionalRows(d.vital?.rows, 'vital.rows', 9, VITAL_CAPACITY, legacy);
+    s.vital.count = Math.min(VITAL_CAPACITY, d.vital?.count ?? 0);
+    if (vitalRows.length < s.vital.count * 9) throw new SimError('SAVE_CORRUPT', 'society.vital rows shorter than count');
+    for (let k = 0; k < s.vital.count; k++) {
+      const o = k * 9;
+      s.vital.id[k] = vitalRows[o] ?? 0;
+      s.vital.day[k] = vitalRows[o + 1] ?? 0;
+      s.vital.type[k] = vitalRows[o + 2] ?? 0;
+      s.vital.severity[k] = vitalRows[o + 3] ?? 0;
+      s.vital.place[k] = vitalRows[o + 4] ?? 0;
+      s.vital.actorA[k] = vitalRows[o + 5] ?? 0;
+      s.vital.actorB[k] = vitalRows[o + 6] ?? 0;
+      s.vital.magnitude[k] = vitalRows[o + 7] ?? 0;
+      s.vital.cause[k] = vitalRows[o + 8] ?? 0;
+    }
+    s.vital.head = s.vital.count % VITAL_CAPACITY;
+  }
 
   const routes = optionalRows(d.routes?.rows, 'routes.rows', 8, ROUTE_CAPACITY, legacy);
   if (!legacy && typeof d.routes?.count !== 'number') throw new SimError('SAVE_CORRUPT', 'society.routes.count is missing');

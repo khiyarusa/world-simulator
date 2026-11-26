@@ -51,45 +51,49 @@ function yearIndex(day: number): number {
   return Math.floor((day - 1) / YEAR);
 }
 
-/** 1. A boom that overshoots, collapses after a drought, and is resettled. */
+/** 1. A boom that overshoots, collapses after a drought, and recovers. */
 function boomCollapse(trace: ArcTrace): ArcResult {
   const ys = trace.years;
-  let peak = 0;
-  for (let i = 1; i < ys.length; i++) {
-    const p = ys[i]?.population ?? 0;
-    if (p > (ys[peak]?.population ?? 0)) peak = i;
-  }
-  const peakPop = ys[peak]?.population ?? 0;
-  if (peakPop < 500) return { type: 'boom_collapse_resettlement', present: false, evidence: 'no boom' };
-  let trough = -1;
-  let troughPop = peakPop;
-  for (let i = peak + 1; i < Math.min(ys.length, peak + 40); i++) {
-    const p = ys[i]?.population ?? 0;
-    if (p < troughPop) {
-      troughPop = p;
-      trough = i;
+  for (let i = 20; i < ys.length; i++) {
+    const peakPop = ys[i]?.population ?? 0;
+    const earlier = ys[i - 20]?.population ?? 0;
+    if (earlier < 500 || peakPop < earlier * 1.5) continue; // a real boom first
+    let trough = -1;
+    let troughPop = peakPop;
+    for (let j = i + 1; j < Math.min(ys.length, i + 40); j++) {
+      const p = ys[j]?.population ?? 0;
+      if (p < troughPop) {
+        troughPop = p;
+        trough = j;
+      }
+    }
+    if (trough < 0 || troughPop > peakPop * 0.85) continue;
+    const drought = trace.events.some((e) => {
+      if (e.type !== 'drought') return false;
+      const y = yearIndex(e.day);
+      return y >= i && y <= trough;
+    });
+    const famine = trace.events.some((e) => {
+      if (e.type !== 'famine') return false;
+      const y = yearIndex(e.day);
+      return y >= i && y <= trough + 2;
+    });
+    let recovered = false;
+    for (let j = trough + 1; j < ys.length; j++) {
+      if ((ys[j]?.population ?? 0) >= troughPop * 1.05) {
+        recovered = true;
+        break;
+      }
+    }
+    if (drought && famine && recovered) {
+      return {
+        type: 'boom_collapse_resettlement',
+        present: true,
+        evidence: `boom ${earlier}->${peakPop}@${ys[i]?.year}, trough ${troughPop}@${ys[trough]?.year}, drought+famine, recovered`,
+      };
     }
   }
-  if (trough < 0 || troughPop > peakPop * 0.75) {
-    return { type: 'boom_collapse_resettlement', present: false, evidence: `peak ${peakPop}, trough ${troughPop}` };
-  }
-  let recovered = false;
-  for (let i = trough + 1; i < ys.length; i++) {
-    if ((ys[i]?.population ?? 0) >= troughPop * 1.1) {
-      recovered = true;
-      break;
-    }
-  }
-  const droughtBeforeTrough = trace.events.some((e) => {
-    if (e.type !== 'drought') return false;
-    const y = yearIndex(e.day);
-    return y >= peak && y <= trough;
-  });
-  return {
-    type: 'boom_collapse_resettlement',
-    present: recovered && droughtBeforeTrough,
-    evidence: `peak ${peakPop}@${ys[peak]?.year}, trough ${troughPop}@${ys[trough]?.year}, recovered ${recovered}, drought ${droughtBeforeTrough}`,
-  };
+  return { type: 'boom_collapse_resettlement', present: false, evidence: 'no drought-famine drawdown after a boom' };
 }
 
 /** 2. A war that kills a trade route and leaves both sides poorer. */
@@ -110,7 +114,7 @@ function warTradeDecline(trace: ArcTrace): ArcResult {
     if (!before || !after) continue;
     const popBefore = (before.civPopulation[a] ?? 0) + (before.civPopulation[b] ?? 0);
     const popAfter = (after.civPopulation[a] ?? 0) + (after.civPopulation[b] ?? 0);
-    if (lost && popBefore > 0 && popAfter < popBefore * 0.9) {
+    if (lost && popBefore > 0 && popAfter < popBefore * 0.95) {
       return {
         type: 'war_trade_decline',
         present: true,

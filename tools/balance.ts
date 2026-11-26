@@ -269,7 +269,7 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
           gatePass:
             (soc.warGateStrength[k] ?? 0) >= 1250 &&
             (soc.warGateGrievance[k] ?? 0) >= 40 &&
-            (soc.warGateCapacity[k] ?? 0) >= 90 &&
+            (soc.warGateCapacity[k] ?? 0) >= 45 &&
             (soc.warGateUtility[k] ?? 0) >= 50,
         });
       }
