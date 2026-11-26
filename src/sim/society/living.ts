@@ -150,7 +150,7 @@ export function runProduction(world: WorldState, day: number): void {
 
     // --- agriculture: labour x land. Yield per farmer falls as the settlement approaches the arable
     // capacity of its own tiles, which is what gives a settlement a carrying capacity at all.
-    const landCap = 120 + (world.grids.fertility[(s.y[i] ?? 0) * world.width + (s.x[i] ?? 0)] ?? 0) * 10;
+    const landCap = 180 + (world.grids.fertility[(s.y[i] ?? 0) * world.width + (s.x[i] ?? 0)] ?? 0) * 16;
     const landPm = pop > 0 ? Math.min(1000, Math.max(300, Math.floor((landCap * 1000) / pop))) : 1000;
     let milli = farmers * 6000;
     milli = mulDiv(milli, seasonal, 1000);

@@ -116,7 +116,7 @@ export function runGrowth(world: WorldState, day: number): void {
 
     // --- founding: prosperity plus room founds a daughter settlement (transfer, not creation)
     if (
-      pop >= 500 &&
+      pop >= 250 &&
       (soc.stability[i] ?? 0) >= 55 &&
       stockOf(soc, i, RES.FOOD) > pop * 20 &&
       s.count < CAPACITY.settlements &&
