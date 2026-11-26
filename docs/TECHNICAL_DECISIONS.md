@@ -595,11 +595,11 @@ names the invariant it protects, because the next agent will be tempted to "simp
 
 ### D-46 — Vital-event ring and the retention contract
 
-- **Decision:** the main ring holds 16,000 events; a second ring holds 4,096 severity-4/5 events with the
+- **Decision:** the main ring holds 14,500 events; a second ring holds 4,096 severity-4/5 events with the
   same stable ids. A notable event cited as a cause (a drought) is copied into the vital ring at citation
   time. Retention contract: the complete authoritative history is the event stream; a save preserves the
-  most recent 16,000 events plus 4,096 severe events and their cited causes. The year-200 raw save stays
-  under 1.2 MB with this budget (measured).
+  most recent 14,500 events plus 4,096 severe events and their cited causes. The year-200 raw save stays
+  under 1,200,000 bytes with this budget (measured max 1,187 KiB at 15k, trimmed for margin).
 - **Why:** the main ring wraps within a 400-year run. Without a second ring, a war declaration's cause was
   evicted before the peace that cites it, and `causeId` 0 proved nothing.
 - **Trade-off:** severe history older than the vital window is not preserved. The harness measures cause

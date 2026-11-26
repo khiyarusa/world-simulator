@@ -293,3 +293,13 @@ build SHA, and the measured numbers. "It felt smooth" is not evidence.
 - Artifacts: APK 14 days, perf reports 30 days, traces 7 days. Never commit build output.
 - Secrets: none in the repo; keystore only in Actions secrets; `.env*` ignored (already in
   `.gitignore`).
+
+
+## Stage 3 suite (2026-11-26)
+
+The Stage 3 suite is **95 tests in 13 files** plus the workflows below; the counts and results are
+owned by `docs/STAGE_3_REPORT.md` §5 and the `ci` run it links. New coverage added for Stage 3:
+conservation across births/deaths/migration/founding, cohort/occupation identity, economy caps and
+prices, infrastructure payment, trade conservation, ecology and blight, civilization/technology,
+diplomacy, the four-condition war gate, event-ring ordering and retention, v1/v2/v3 save paths, a v3
+corruption case, and a fixed-vs-moving-camera A/B test on the real pipeline.

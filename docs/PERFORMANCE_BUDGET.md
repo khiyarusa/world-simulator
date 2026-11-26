@@ -7,6 +7,10 @@ measurement recorded). At Stage 1 nothing has been measured, so **every number h
 
 ---
 
+**Stage 3 measured values** (tick p95, worst-case world, year-200 save size and encode time) are owned
+by `docs/STAGE_3_REPORT.md` §4 and are not duplicated here. The budgets in §4 below remain the
+`[TARGET]`; only a run may label a value `[VERIFIED]`, and the report carries the run link.
+
 ## 1. Hardware assumption
 
 | Item | Value | Status |
