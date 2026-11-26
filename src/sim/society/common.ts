@@ -5,6 +5,8 @@ import { COHORT, CIV_STRIDE, addCohort, cohortOf, populationOf, type SocietyStat
 export const FLAG_RUINED = 1;
 export const FLAG_STARVING = 2;
 export const FLAG_DROUGHT = 4;
+/** Stage 4: an active player blight is a real pressure, not a cosmetic marker. */
+export const FLAG_BLIGHT = 8;
 
 export function isAlive(world: WorldState, settlement: number): boolean {
   return (

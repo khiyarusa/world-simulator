@@ -1,15 +1,19 @@
 /**
- * World creation screen: seed, preset, sliders, real generator preview.
+ * World creation screen: name, seed, preset, sliders and a real generator preview.
  *
- * Kept separate from the HUD shell so neither file grows into a god module (AGENTS.md §4). The
- * panel owns its form state only; the session owns the recipe and the worker.
+ * The panel owns its form state only; the session owns the recipe and the worker. All strings are
+ * localised, and the preview colours come from the renderer palette so the thumbnail and the map
+ * cannot disagree.
  */
 import { BIOME_COLORS, css } from '../render/palette.ts';
 import { PRESETS } from '../sim/world/presets.ts';
+import { button, el, field, input } from './dom.ts';
+import { fmtNum, presetLabel, t } from './i18n.ts';
 
 export type PresetId = 'small' | 'medium' | 'large';
 
 export interface CreateInput {
+  name: string;
   seedText: string;
   preset: PresetId;
   water: number;
@@ -20,6 +24,7 @@ export interface CreateInput {
 export interface CreationHandlers {
   onCreate(input: CreateInput): void;
   onPreviewRequest(input: CreateInput): void;
+  onBack(): void;
 }
 
 export function randomSeedText(): string {
@@ -30,29 +35,114 @@ export function randomSeedText(): string {
 }
 
 export function defaultCreateInput(): CreateInput {
-  return { seedText: randomSeedText(), preset: 'medium', water: 50, harshness: 50, peoples: 6 };
+  return { name: '', seedText: randomSeedText(), preset: 'medium', water: 50, harshness: 50, peoples: 6 };
 }
 
 export class CreationPanel {
   readonly root: HTMLDivElement;
   private readonly handlers: CreationHandlers;
   private readonly progressBar: HTMLElement;
+  private readonly progressText: HTMLElement;
   private readonly previewCanvas: HTMLCanvasElement;
+  private readonly previewPlaceholder: HTMLElement;
+  private readonly summary: HTMLElement;
   private input: CreateInput;
   private wired = false;
 
-  constructor(handlers: CreationHandlers, input: CreateInput) {
+  constructor(handlers: CreationHandlers, initial: CreateInput) {
     this.handlers = handlers;
-    this.input = { ...input };
-    this.root = document.createElement('div');
-    this.root.className = 'create';
-    this.root.hidden = true;
-    this.root.innerHTML = TEMPLATE;
-    const progress = this.root.querySelector<HTMLElement>('#progress-bar');
-    const canvas = this.root.querySelector<HTMLCanvasElement>('#preview-canvas');
-    if (!progress || !canvas) throw new Error('creation screen template is incomplete');
-    this.progressBar = progress;
-    this.previewCanvas = canvas;
+    this.input = { ...initial };
+    this.root = el('div', { class: 'create', hidden: true });
+
+    const head = el('header', { class: 'create-head' });
+    const back = button(`← ${t('nav.backToWorlds')}`, () => this.handlers.onBack(), {});
+    back.classList.add('ghost', 'back');
+    head.append(back);
+    head.append(el('h1', { text: t('create.title') }), el('p', { class: 'lede', text: t('create.lede') }));
+    this.root.append(head);
+
+    this.root.append(field(t('create.name'), input(this.input.name, (v) => {
+      this.input.name = v;
+    }, 'text')));
+    const nameInput = this.root.querySelector<HTMLInputElement>('input');
+    if (nameInput) {
+      nameInput.id = 'create-name';
+      nameInput.placeholder = t('create.namePlaceholder');
+    }
+
+    const seedField = el('div', { class: 'field' });
+    seedField.append(el('span', { class: 'field-label', text: t('create.seed') }));
+    const seedRow = el('div', { class: 'row' });
+    const seedInput = el('input', { class: 'input', id: 'seed-input', type: 'text', value: this.input.seedText, spellcheck: 'false', autocomplete: 'off' });
+    seedInput.addEventListener('input', () => {
+      this.input.seedText = seedInput.value.trim().toUpperCase();
+    });
+    const random = button(t('create.random'), () => {
+      this.input.seedText = randomSeedText();
+      seedInput.value = this.input.seedText;
+    });
+    random.classList.add('compact');
+    seedRow.append(seedInput, random);
+    seedField.append(seedRow, el('span', { class: 'hint', text: t('create.seedHint') }));
+    this.root.append(seedField);
+
+    const sizeField = el('div', { class: 'field' });
+    sizeField.append(el('span', { class: 'field-label', text: t('create.size') }));
+    const seg = el('div', { class: 'seg' });
+    for (const preset of ['small', 'medium', 'large'] as const) {
+      const b = button(presetLabel(preset), () => {
+        this.input.preset = preset;
+        this.sync();
+      });
+      b.dataset.preset = preset;
+      seg.append(b);
+    }
+    sizeField.append(seg);
+    this.root.append(sizeField);
+
+    for (const key of ['water', 'harshness', 'peoples'] as const) {
+      const wrap = el('div', { class: 'field' });
+      const label = el('span', { class: 'field-label' });
+      const value = el('span', { class: 'hint value' });
+      label.textContent = t(`create.${key}`);
+      const range = el('input', {
+        type: 'range',
+        min: key === 'peoples' ? 1 : 0,
+        max: key === 'peoples' ? 12 : 100,
+        value: this.input[key],
+        class: 'range',
+      });
+      range.addEventListener('input', () => {
+        this.input[key] = Number(range.value);
+        this.sync();
+      });
+      wrap.append(label, value, range);
+      wrap.dataset.field = key;
+      this.root.append(wrap);
+    }
+
+    const preview = el('div', { class: 'preview' });
+    this.previewPlaceholder = el('span', { class: 'placeholder', text: t('create.previewHint') });
+    this.previewCanvas = el('canvas', { width: 256, height: 256, hidden: true, id: 'preview-canvas' });
+    preview.append(this.previewPlaceholder, this.previewCanvas);
+    this.root.append(preview);
+
+    this.summary = el('p', { class: 'hint summary' });
+    this.root.append(this.summary);
+
+    const progress = el('div', { class: 'progress' });
+    this.progressBar = el('i');
+    progress.append(this.progressBar);
+    this.progressText = el('span', { class: 'hint progress-text' });
+    this.root.append(progress, this.progressText);
+
+    const actions = el('div', { class: 'row' });
+    actions.append(button(t('create.preview'), () => this.handlers.onPreviewRequest(this.currentInput)));
+    const generate = button(t('create.generate'), () => this.handlers.onCreate(this.currentInput), { accent: true });
+    generate.id = 'create-btn';
+    actions.append(generate);
+    this.root.append(actions);
+    this.root.append(el('p', { class: 'hint', text: t('create.seedHint') }));
   }
 
   get currentInput(): CreateInput {
@@ -74,20 +164,17 @@ export class CreationPanel {
     this.root.hidden = true;
   }
 
-  setProgress(pct: number): void {
-    this.progressBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  setProgress(pct: number, busy = true): void {
+    const clamped = Math.max(0, Math.min(100, pct));
+    this.progressBar.style.width = `${clamped}%`;
+    this.progressText.textContent = busy ? t('create.progress', { pct: fmtNum(Math.round(clamped)) }) : '';
   }
 
   showPreview(): void {
     this.previewCanvas.hidden = false;
-    const placeholder = this.root.querySelector('.preview .placeholder');
-    if (placeholder) placeholder.remove();
+    this.previewPlaceholder.hidden = true;
   }
 
-  /**
-   * Draw the real preview returned by the worker. Colours come from the renderer palette, so the
-   * preview and the map can never disagree about what a biome looks like.
-   */
   drawPreview(width: number, height: number, biome: Uint8Array, elevation: Int16Array): void {
     const size = 256;
     this.previewCanvas.hidden = false;
@@ -95,6 +182,7 @@ export class CreationPanel {
     this.previewCanvas.height = size;
     const ctx = this.previewCanvas.getContext('2d');
     if (!ctx) return;
+    ctx.imageSmoothingEnabled = false;
     const cw = size / width;
     const ch = size / height;
     for (let y = 0; y < height; y++) {
@@ -115,100 +203,29 @@ export class CreationPanel {
   private wire(): void {
     if (this.wired) return;
     this.wired = true;
-
-    const seed = this.need<HTMLInputElement>('#seed-input');
-    seed.addEventListener('input', () => {
-      this.input.seedText = seed.value.trim().toUpperCase();
-    });
-    for (const id of ['#water', '#harsh', '#peoples'] as const) {
-      this.need<HTMLInputElement>(id).addEventListener('input', () => {
-        this.input.water = Number(this.need<HTMLInputElement>('#water').value);
-        this.input.harshness = Number(this.need<HTMLInputElement>('#harsh').value);
-        this.input.peoples = Number(this.need<HTMLInputElement>('#peoples').value);
-        this.sync();
-      });
-    }
-    for (const btn of this.root.querySelectorAll<HTMLButtonElement>('#preset-seg button')) {
-      btn.addEventListener('click', () => {
-        this.input.preset = (btn.dataset.preset ?? 'medium') as PresetId;
-        this.sync();
-      });
-    }
-    this.need('#seed-random').addEventListener('click', () => {
-      this.input.seedText = randomSeedText();
-      this.need<HTMLInputElement>('#seed-input').value = this.input.seedText;
-    });
-    this.need('#preview-btn').addEventListener('click', () => this.handlers.onPreviewRequest(this.currentInput));
-    this.need('#create-btn').addEventListener('click', () => this.handlers.onCreate(this.currentInput));
+    this.sync();
   }
 
   private sync(): void {
-    this.need<HTMLInputElement>('#seed-input').value = this.input.seedText;
-    this.need<HTMLInputElement>('#water').value = String(this.input.water);
-    this.need<HTMLInputElement>('#harsh').value = String(this.input.harshness);
-    this.need<HTMLInputElement>('#peoples').value = String(this.input.peoples);
-    for (const btn of this.root.querySelectorAll<HTMLButtonElement>('#preset-seg button')) {
-      btn.setAttribute('aria-pressed', String(btn.dataset.preset === this.input.preset));
+    for (const preset of ['small', 'medium', 'large'] as const) {
+      for (const b of this.root.querySelectorAll<HTMLButtonElement>(`button[data-preset="${preset}"]`)) {
+        b.setAttribute('aria-pressed', String(preset === this.input.preset));
+        b.classList.toggle('accent', preset === this.input.preset);
+      }
     }
-    this.need('#water-val').textContent = `${this.input.water}%`;
-    this.need('#harsh-val').textContent = `${this.input.harshness}%`;
-    this.need('#peoples-val').textContent = `${this.input.peoples}`;
-    this.need('#create-hint').textContent = this.describe();
-  }
-
-  private describe(): string {
+    for (const key of ['water', 'harshness', 'peoples'] as const) {
+      const wrap = this.root.querySelector<HTMLElement>(`[data-field="${key}"]`);
+      if (!wrap) continue;
+      const range = wrap.querySelector<HTMLInputElement>('input[type="range"]');
+      const value = wrap.querySelector<HTMLElement>('.value');
+      if (range) range.value = String(this.input[key]);
+      if (value) value.textContent = `${fmtNum(this.input[key])}${key === 'peoples' ? '' : '%'}`;
+    }
     const size = PRESETS[this.input.preset].size;
-    const label = this.input.preset[0]!.toUpperCase() + this.input.preset.slice(1);
-    return `${label} · ${size} × ${size} tiles · ${this.input.peoples} peoples`;
-  }
-
-  private need<T extends HTMLElement>(selector: string): T {
-    const node = this.root.querySelector<T>(selector);
-    if (!node) throw new Error(`creation screen is missing ${selector}`);
-    return node;
+    this.summary.textContent = t('create.summary', {
+      preset: presetLabel(this.input.preset),
+      size: fmtNum(size),
+      peoples: fmtNum(this.input.peoples),
+    });
   }
 }
-
-const TEMPLATE = `
-  <h1>Create a world</h1>
-  <p class="lede">A generated world of terrain, rivers and biomes. Settlements are placed from
-  real fertility, water and slope data. The same seed always produces the same world.</p>
-  <div class="field">
-    <label for="seed-input">Seed</label>
-    <div class="row">
-      <input id="seed-input" type="text" inputmode="text" autocomplete="off" spellcheck="false" />
-      <button id="seed-random" class="btn" type="button" style="flex:0 0 96px">Random</button>
-    </div>
-    <span class="hint">Format: 8 hex digits - 8 hex digits</span>
-  </div>
-  <div class="field">
-    <label>Size</label>
-    <div class="seg" id="preset-seg">
-      <button type="button" data-preset="small">Small</button>
-      <button type="button" data-preset="medium">Medium</button>
-      <button type="button" data-preset="large">Large</button>
-    </div>
-  </div>
-  <div class="field">
-    <label for="water">Water <span id="water-val" class="hint"></span></label>
-    <input id="water" type="range" min="0" max="100" step="1" />
-  </div>
-  <div class="field">
-    <label for="harsh">Harshness <span id="harsh-val" class="hint"></span></label>
-    <input id="harsh" type="range" min="0" max="100" step="1" />
-  </div>
-  <div class="field">
-    <label for="peoples">Peoples <span id="peoples-val" class="hint"></span></label>
-    <input id="peoples" type="range" min="1" max="12" step="1" />
-  </div>
-  <div class="preview">
-    <span class="placeholder">Preview uses the real generator (small preset)</span>
-    <canvas id="preview-canvas" width="256" height="256" hidden></canvas>
-  </div>
-  <div class="progress"><i id="progress-bar"></i></div>
-  <div class="row">
-    <button id="preview-btn" class="btn" type="button">Preview</button>
-    <button id="create-btn" class="btn accent" type="button">Generate world</button>
-  </div>
-  <span class="hint" id="create-hint"></span>
-`;

@@ -19,18 +19,14 @@ import { PRESETS, clampHarshness, clampPeoples, clampWater, harshnessSwing, isPr
 import { recipeHashOf } from './recipeHash.ts';
 import { validateGenerated } from './validate.ts';
 import { tierOf } from '../state/worldState.ts';
-import { allocateSociety } from '../society/state.ts';
+import { allocateSociety } from '../society/allocate.ts';
 import { initialiseSociety } from '../society/init.ts';
 import type { CivStore, GenerationReport, SettlementStore, WorldRecipe, WorldState } from '../state/worldState.ts';
 import { allocateCivs, allocateGrids, allocateSettlements } from '../state/worldState.ts';
-
 export const GENERATOR_VERSION_V1 = 1;
-
 export type ProgressFn = (stage: string, pct: number) => void;
-
 const TERRAIN_STREAM_INDEX = STREAM_IDS.indexOf(STREAM.TERRAIN);
 const SPAWN_STREAM_INDEX = STREAM_IDS.indexOf(STREAM.SPAWN);
-
 const STAGE_WEIGHTS: ReadonlyArray<readonly [string, number]> = [
   ['land', 18],
   ['elevation', 14],
@@ -448,6 +444,10 @@ function attempt(recipe: WorldRecipe, progress: Progress): AttemptResult {
       techDiscovered: 0,
       starvationDeaths: 0,
       epidemicDeaths: 0,
+      blessings: 0,
+      blights: 0,
+      fertilized: 0,
+      incited: 0,
     },
     rngStates,
     report,

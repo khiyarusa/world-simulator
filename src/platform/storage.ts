@@ -24,6 +24,8 @@ export interface WorldDoc {
   currentGen: number;
   prevGen: number;
   counts: { settlements: number; civs: number; population: number };
+  /** Real render captured when the world was last saved (data URL); optional for old saves. */
+  thumbnail?: string;
 }
 
 export interface StoredShard {

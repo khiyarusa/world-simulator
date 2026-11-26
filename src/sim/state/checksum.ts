@@ -19,9 +19,9 @@ import type { WorldState } from './worldState.ts';
  * Field order is frozen. Everything hashed here is deterministic persisted state; nothing here is
  * transient (no render, camera, UI, timing or report data).
  */
-export const CHECKSUM_CONTRACT_VERSION = 5;
+export const CHECKSUM_CONTRACT_VERSION = 6;
 
-const CHECKSUM_DOMAIN = 0x43534d35; // "CSM5"
+const CHECKSUM_DOMAIN = 0x43534d36; // "CSM6"
 
 function bytesOf(view: Int16Array | Int8Array | Uint8Array | Uint16Array): Uint8Array {
   return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
@@ -86,6 +86,10 @@ export function worldChecksum(state: WorldState): number {
   crc = crc32OfU32(crc, k.techDiscovered);
   crc = crc32OfU32(crc, k.starvationDeaths);
   crc = crc32OfU32(crc, k.epidemicDeaths);
+  crc = crc32OfU32(crc, k.blessings);
+  crc = crc32OfU32(crc, k.blights);
+  crc = crc32OfU32(crc, k.fertilized);
+  crc = crc32OfU32(crc, k.incited);
 
   // --- RNG: a resumed world must have the same stream positions as an uninterrupted one
   crc = crc32OfU32(crc, state.rngStates.length);
@@ -245,6 +249,45 @@ export function worldChecksum(state: WorldState): number {
     crc = crc32OfU32(crc, soc.chroniclePop[i] ?? 0);
     crc = crc32OfU32(crc, soc.chronicleSettlements[i] ?? 0);
     crc = crc32OfU32(crc, soc.chronicleEvents[i] ?? 0);
+  }
+
+  // --- Stage 4: player interventions, cooldowns and the yearly series are authoritative state
+  crc = crc32OfU32(crc, soc.interventionCount);
+  for (let kind = 0; kind < soc.interventionLastDay.length; kind++) {
+    crc = crc32OfU32(crc, soc.interventionLastDay[kind] ?? 0);
+  }
+  const ivCap = soc.interventionKind.length;
+  for (let n = 0; n < soc.interventionCount; n++) {
+    const i = (soc.interventionHead - soc.interventionCount + n + ivCap * 2) % ivCap;
+    crc = crc32OfU32(crc, soc.interventionKind[i] ?? 0);
+    crc = crc32OfU32(crc, soc.interventionA[i] ?? 0);
+    crc = crc32OfU32(crc, soc.interventionB[i] ?? 0);
+    crc = crc32OfU32(crc, soc.interventionStart[i] ?? 0);
+    crc = crc32OfU32(crc, soc.interventionEnd[i] ?? 0);
+    crc = crc32OfU32(crc, soc.interventionIntensity[i] ?? 0);
+    crc = crc32OfU32(crc, soc.interventionResource[i] ?? 0);
+    crc = crc32OfU32(crc, soc.interventionAmount[i] ?? 0);
+  }
+
+  for (let i = 0; i < state.settlements.count; i++) {
+    crc = crc32OfU32(crc, soc.trendCount[i] ?? 0);
+    for (let n = 0; n < 6; n++) crc = crc32OfU32(crc, soc.trendPop[i * 6 + n] ?? 0);
+  }
+
+  crc = crc32OfU32(crc, soc.statsCount);
+  const stCap = soc.statsYear.length;
+  for (let n = 0; n < soc.statsCount; n++) {
+    const i = (soc.statsHead - soc.statsCount + n + stCap * 2) % stCap;
+    crc = crc32OfU32(crc, soc.statsYear[i] ?? 0);
+    crc = crc32OfU32(crc, soc.statsPopulation[i] ?? 0);
+    crc = crc32OfU32(crc, soc.statsSettlements[i] ?? 0);
+    crc = crc32OfU32(crc, soc.statsCivs[i] ?? 0);
+    crc = crc32OfU32(crc, soc.statsFoodProduced[i] ?? 0);
+    crc = crc32OfU32(crc, soc.statsTradeVolume[i] ?? 0);
+    crc = crc32OfU32(crc, soc.statsTreasury[i] ?? 0);
+    crc = crc32OfU32(crc, soc.statsWars[i] ?? 0);
+    crc = crc32OfU32(crc, soc.statsFertility[i] ?? 0);
+    crc = crc32OfU32(crc, soc.statsDrought[i] ?? 0);
   }
 
   const c = state.civs;

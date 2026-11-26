@@ -10,7 +10,9 @@ import type { MirrorDelta, WorldMetaMsg } from '../worker/protocol.ts';
 import { Camera, type Point } from './camera.ts';
 import { TILE_PX, markerWorldScale, selectionRadiusWorld } from './markerGeometry.ts';
 import { civColor } from './palette.ts';
-import { createSettlementTextures } from './settlementSprites.ts';
+import { createSettlementTextures, RUINED_TEXTURE_OFFSET } from './settlementSprites.ts';
+import { LayerView, type LayerViewMeta } from './layers.ts';
+import type { LayerData } from '../worker/queries.ts';
 import type { BakedTerrain } from './terrainBake.ts';
 
 export { TILE_PX } from './markerGeometry.ts';
@@ -43,11 +45,15 @@ export class Renderer {
   readonly cam = new Camera();
   private readonly root = new Container({ isRenderGroup: true });
   private readonly settlementLayer = new Container();
+  private readonly stateMarks = new Graphics();
   private readonly selection = new Graphics();
+  readonly layers: LayerView;
   private readonly textures: Texture[];
   private readonly sprites: Sprite[] = [];
   /** Tier per settlement sprite; marker size is derived from it at draw time (D-39). */
   private readonly spriteTier = new Uint8Array(200);
+  /** Stage 4 visual state bits per sprite. */
+  private readonly spriteState = new Uint8Array(200);
   private readonly handlers: RendererHandlers;
   private terrain: Sprite | null = null;
   private meta: WorldMetaMsg | null = null;
@@ -71,12 +77,14 @@ export class Renderer {
     this.app = app;
     this.handlers = handlers;
     this.textures = createSettlementTextures();
+    this.layers = new LayerView();
+    this.root.addChild(this.layers.rasterContainer, this.settlementLayer, this.stateMarks, this.layers.vector, this.selection);
   }
 
   static async create(host: HTMLElement, handlers: RendererHandlers): Promise<Renderer> {
     const app = new Application();
     await app.init({
-      background: '#12110e',
+      background: '#1a2b35',
       resizeTo: host,
       antialias: false,
       preference: 'webgl',
@@ -88,7 +96,6 @@ export class Renderer {
 
     const renderer = new Renderer(app, handlers);
     app.stage.addChild(renderer.root);
-    renderer.root.addChild(renderer.settlementLayer, renderer.selection);
     renderer.bindInput(app.canvas);
     app.renderer.on('resize', (w: number, h: number) => {
       renderer.cam.setViewport(w, h);
@@ -148,6 +155,7 @@ export class Renderer {
       const s = this.sprites[i];
       if (s) s.visible = false;
     }
+    this.drawStateMarks();
   }
 
   // ---------------------------------------------------------------- live data
@@ -157,25 +165,94 @@ export class Renderer {
     for (let i = 0; i < count; i++) {
       const sprite = this.sprites[i];
       if (!sprite) continue;
-      const tier = delta.tier[i] ?? 0;
-      const tex = this.textures[tier] ?? this.textures[0]!;
+      const tier = Math.min(4, delta.tier[i] ?? 0);
+      const state = delta.state?.[i] ?? 0;
+      const ruined = (state & 1) !== 0;
+      const tex = this.textures[tier + (ruined ? RUINED_TEXTURE_OFFSET : 0)] ?? this.textures[0]!;
       if (sprite.texture !== tex) sprite.texture = tex;
       const civ = delta.civ[i] ?? 0;
       const tint = civColor(civ);
       if (sprite.tint !== tint) sprite.tint = tint;
+      sprite.alpha = (state & 64) !== 0 || (state & 2) !== 0 ? 0.68 : 1;
       // Population is encoded by scale, never by number on the map (UX §9.2)
       this.spriteTier[i] = tier;
+      this.spriteState[i] = state;
     }
     for (let i = count; i < this.sprites.length; i++) {
       const s = this.sprites[i];
       if (s) s.visible = false;
     }
+    this.drawStateMarks();
     this.drawSelection();
+  }
+
+  /** Small state dots: occupied, starving, prosperous. Shape+colour, never colour alone. */
+  private drawStateMarks(): void {
+    const g = this.stateMarks;
+    g.clear();
+    for (let i = 0; i < this.sprites.length; i++) {
+      const sprite = this.sprites[i];
+      if (!sprite || !sprite.visible) continue;
+      const state = this.spriteState[i] ?? 0;
+      if (state === 0) continue;
+      const x = sprite.x;
+      const y = sprite.y;
+      if ((state & 16) !== 0) {
+        // occupied: a small banner above the glyph
+        g.poly([x - 2.2, y - 5.5, x + 2.2, y - 5.5, x, y - 2.6]).fill({ color: 0xb8503c, alpha: 0.95 });
+      }
+      if ((state & 2) !== 0) {
+        g.circle(x + 2.6, y - 2.2, 1.25).fill({ color: 0xc08a3e, alpha: 0.95 });
+      } else if ((state & 32) !== 0) {
+        g.circle(x + 2.6, y - 2.2, 1.05).fill({ color: 0xd8c07a, alpha: 0.95 });
+      }
+      if ((state & 8) !== 0) {
+        // blight/damage: a rust ring on the other side, distinct in shape from the starvation dot
+        g.circle(x - 2.8, y - 2.2, 1.2).stroke({ width: 0.7, color: 0x9a5a3a, alpha: 0.95 });
+      }
+    }
   }
 
   setSelected(id: number | null): void {
     this.selectedId = id;
     this.drawSelection();
+  }
+
+  setLayer(data: LayerData | null, meta: LayerViewMeta): void {
+    this.layers.setData(data, meta);
+    this.layers.setZoom(this.cam.zoom, true);
+  }
+
+  clearLayer(): void {
+    this.layers.clear();
+  }
+
+  markerAt(tileX: number, tileY: number, radius = 2.2): { id: number; layer: string } | null {
+    return this.layers.markerAt(tileX, tileY, radius);
+  }
+
+  layerProbe(): Record<string, number | string | boolean | null> {
+    return this.layers.debugState();
+  }
+
+  /** Centre the camera on a tile, used by panel "show on map" actions. */
+  flyTo(tileX: number, tileY: number, zoom = Math.max(this.cam.zoom, 0.9)): void {
+    this.cam.centerOn((tileX + 0.5) * TILE_PX, (tileY + 0.5) * TILE_PX, zoom);
+  }
+
+  /** Real framebuffer capture for a saved-world thumbnail. */
+  snapshotDataUrl(size = 256): string {
+    this.cam.snap();
+    this.applyTransform();
+    this.applyMarkerScale();
+    this.app.renderer.render(this.app.stage);
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+    ctx.drawImage(this.app.canvas, 0, 0, size, size);
+    return canvas.toDataURL('image/jpeg', 0.7);
   }
 
   private drawSelection(): void {
@@ -269,6 +346,7 @@ export class Renderer {
   private applyTransform(): void {
     this.root.position.set(-this.cam.x * this.cam.zoom, -this.cam.y * this.cam.zoom);
     this.root.scale.set(this.cam.zoom);
+    this.layers.setZoom(this.cam.zoom);
     this.drawSelection();
   }
 

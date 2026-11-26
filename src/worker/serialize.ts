@@ -15,7 +15,7 @@ import type { RngState } from '../core/rng.ts';
 import type { SaveShard } from './protocol.ts';
 import { captureWorld } from './snapshot.ts';
 import { decodeSociety } from '../sim/society/codec.ts';
-import { allocateSociety } from '../sim/society/state.ts';
+import { allocateSociety } from '../sim/society/allocate.ts';
 import { initialiseSociety } from '../sim/society/init.ts';
 import type { WorldSnapshot } from './snapshot.ts';
 import {
@@ -253,6 +253,10 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
     techDiscovered: meta.counters?.techDiscovered ?? 0,
     starvationDeaths: meta.counters?.starvationDeaths ?? 0,
     epidemicDeaths: meta.counters?.epidemicDeaths ?? 0,
+    blessings: meta.counters?.blessings ?? 0,
+    blights: meta.counters?.blights ?? 0,
+    fertilized: meta.counters?.fertilized ?? 0,
+    incited: meta.counters?.incited ?? 0,
   };
 
   const state: WorldState = {

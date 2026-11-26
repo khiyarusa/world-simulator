@@ -82,6 +82,11 @@ export interface WorldCounters {
   techDiscovered: number;
   starvationDeaths: number;
   epidemicDeaths: number;
+  /** Stage 4 player interventions, counted only when the command actually applied. */
+  blessings: number;
+  blights: number;
+  fertilized: number;
+  incited: number;
 }
 
 export interface GenerationReport {

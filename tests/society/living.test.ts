@@ -79,7 +79,7 @@ describe('living world', () => {
     const state = world(11);
     run(state, 400);
     const restored = await deserializeWorld(await serializeWorld(state));
-    expect(restored.schemaVersion).toBe(3);
+    expect(restored.schemaVersion).toBe(4);
     expect(restored.state.day).toBe(state.day);
     expect(worldChecksum(restored.state)).toBe(worldChecksum(state));
     expect(totalPopulation(restored.state)).toBe(totalPopulation(state));

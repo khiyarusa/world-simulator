@@ -23,6 +23,8 @@ export interface MirrorDelta {
   pop: Int32Array;
   civ: Uint8Array;
   tier: Uint8Array;
+  /** Stage 4 visual state bits: 1 ruined, 2 starving, 4 drought, 8 blight, 16 occupied, 32 prosperous, 64 declining */
+  state: Uint8Array;
 }
 
 export interface SettlementLayout {
@@ -58,11 +60,77 @@ export interface SaveShard {
   readonly payload: ArrayBuffer;
 }
 
+export type LayerKind = 'political' | 'terrain' | 'population' | 'economy' | 'ecology' | 'history';
+export const LAYER_KINDS: readonly LayerKind[] = ['political', 'terrain', 'population', 'economy', 'ecology', 'history'];
+
+export interface HistoryFilter {
+  /** EVENT_TYPE ids; empty/undefined means every category */
+  readonly types?: readonly number[] | undefined;
+  readonly minSeverity?: number | undefined;
+  readonly fromDay?: number | undefined;
+  readonly toDay?: number | undefined;
+  readonly place?: number | undefined;
+  readonly civ?: number | undefined;
+  readonly playerOnly?: boolean | undefined;
+  /** free text over names and event type, matched case-insensitively in the worker */
+  readonly search?: string | undefined;
+}
+
 export type QueryWhat =
   | { readonly kind: 'world' }
   | { readonly kind: 'settlement'; readonly id: number }
+  | { readonly kind: 'settlements'; readonly offset?: number | undefined; readonly limit?: number | undefined }
   | { readonly kind: 'settlement-list' }
+  | { readonly kind: 'civ'; readonly id: number }
+  | { readonly kind: 'civs' }
+  | { readonly kind: 'economy'; readonly civ?: number | undefined }
+  | { readonly kind: 'ecology'; readonly settlement?: number | undefined }
+  | { readonly kind: 'history'; readonly filter?: HistoryFilter | undefined; readonly offset?: number | undefined; readonly limit?: number | undefined }
+  | { readonly kind: 'event'; readonly id: number }
+  | { readonly kind: 'chronicle'; readonly fromYear?: number | undefined; readonly toYear?: number | undefined; readonly offset?: number | undefined; readonly limit?: number | undefined }
+  | { readonly kind: 'decisions'; readonly limit?: number | undefined }
+  | { readonly kind: 'layer'; readonly layer: LayerKind; readonly filter?: HistoryFilter | undefined }
+  | { readonly kind: 'interventions' }
   | { readonly kind: 'debug' };
+
+/** Structured query failure. The client rejects instead of handing `null` to a panel. */
+export type QueryResponse = { readonly ok: true; readonly data: unknown } | { readonly ok: false; readonly code: string; readonly message: string };
+
+export type PlayerCommand =
+  | { readonly op: 'bless'; readonly settlement: number; readonly resource: number; readonly amount: number }
+  | { readonly op: 'blight'; readonly settlement: number; readonly intensity: number; readonly durationDays: number }
+  | { readonly op: 'fertilize'; readonly settlement: number; readonly intensity: number }
+  | { readonly op: 'incite'; readonly civA: number; readonly civB: number };
+
+export interface CommandEffect {
+  readonly kind:
+    | 'stock'
+    | 'relation'
+    | 'grievance'
+    | 'fertility'
+    | 'vegetation'
+    | 'health'
+    | 'stability'
+    | 'area';
+  readonly resource?: number;
+  readonly before: number;
+  readonly after: number;
+  readonly delta: number;
+}
+
+/** One settlement row, cheap enough to list every settlement. */
+export interface SettlementSummary {
+  readonly id: number;
+  readonly name: string;
+  readonly civId: number;
+  readonly civName: string;
+  readonly x: number;
+  readonly y: number;
+  readonly pop: number;
+  readonly tier: number;
+  readonly biome: number;
+  readonly alive: boolean;
+}
 
 export interface SettlementDetail {
   readonly id: number;
@@ -80,6 +148,31 @@ export interface SettlementDetail {
   readonly fertility: number;
   readonly resource: number;
   readonly owner: number;
+  readonly alive: boolean;
+  readonly health: number;
+  readonly stability: number;
+  readonly literacy: number;
+  readonly treasury: number;
+  readonly stock: readonly number[];
+  readonly cap: readonly number[];
+  readonly price: readonly number[];
+  readonly cohorts: readonly number[];
+  readonly occShare: readonly number[];
+  readonly infra: number;
+  readonly flags: number;
+  readonly occupier: number;
+  readonly surplusYears: number;
+  readonly lastDroughtEvent: number;
+  readonly lastFamineEvent: number;
+  readonly trend: readonly number[];
+  /** per-resource yearly Bless limit, computed by the same worker rule that enforces it */
+  readonly blessMax: readonly number[];
+  readonly civilization: {
+    readonly id: number;
+    readonly name: string;
+    readonly capital: boolean;
+    readonly legitimacy: number;
+  };
 }
 
 export type Cmd =
@@ -93,6 +186,7 @@ export type Cmd =
   | { readonly t: 'view'; readonly x: number; readonly y: number; readonly w: number; readonly h: number; readonly zoom: number }
   | { readonly t: 'select'; readonly id: number | null }
   | { readonly t: 'query'; readonly qid: number; readonly what: QueryWhat }
+  | { readonly t: 'player'; readonly token: number; readonly command: PlayerCommand }
   | { readonly t: 'save'; readonly sid: number }
   | { readonly t: 'preview'; readonly token: number; readonly recipe: WorldRecipe }
   | { readonly t: 'pause' }
@@ -109,7 +203,17 @@ export type WorkerMsg =
   | { readonly t: 'terrain'; readonly width: number; readonly height: number; readonly grids: TerrainArrays }
   | { readonly t: 'delta'; readonly delta: MirrorDelta }
   | { readonly t: 'stats'; readonly tickP50: number; readonly tickP95: number; readonly tickMax: number; readonly dropped: number; readonly speed: Speed; readonly day: number }
-  | { readonly t: 'queryResult'; readonly qid: number; readonly data: unknown }
+  | { readonly t: 'queryResult'; readonly qid: number; readonly response: QueryResponse }
+  | {
+      readonly t: 'commandResult';
+      readonly token: number;
+      readonly ok: boolean;
+      readonly code: string;
+      readonly message: string;
+      readonly eventId: number;
+      readonly effects: readonly CommandEffect[];
+      readonly cooldownDays: number;
+    }
   | {
       readonly t: 'previewResult';
       readonly token: number;
@@ -131,7 +235,7 @@ export type WorkerMsg =
 export function transferListOf(msg: WorkerMsg): Transferable[] | undefined {
   if (msg.t === 'delta') {
     const d = msg.delta;
-    return [d.id.buffer, d.pop.buffer, d.civ.buffer, d.tier.buffer];
+    return [d.id.buffer, d.pop.buffer, d.civ.buffer, d.tier.buffer, d.state.buffer];
   }
   return undefined;
 }

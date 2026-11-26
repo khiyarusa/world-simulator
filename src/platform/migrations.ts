@@ -24,6 +24,12 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * so the decoder fills those structures as empty (the codec keeps accepting v2 blocks).
    */
   2: (doc) => ({ ...doc, schemaVersion: 3 }),
+  /**
+   * 3 -> 4: player interventions, their cooldowns and the yearly world series are added to the save
+   * payload (the society block). A schema-3 world predates them, so its block decodes with empty
+   * rings — the honest state of a world that never saw a player action.
+   */
+  3: (doc) => ({ ...doc, schemaVersion: 4 }),
 };
 
 export function migrateDoc(doc: WorldDoc): WorldDoc {

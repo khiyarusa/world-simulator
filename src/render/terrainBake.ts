@@ -50,52 +50,56 @@ export function bakeTerrain(
   const cw = size / width;
   const ch = size / height;
 
-  // ---- pass 1: land + water fill with relief
+  // ---- pass 1: land + water fill with relief.
+  // The colour field is computed at one sample per tile, then upscaled with smoothing. Drawing one
+  // flat rectangle per tile made the land read as a colour chart; interpolating the same real data
+  // gives soft slopes and coast gradients without inventing a single elevation.
+  const baseCanvas = document.createElement('canvas');
+  baseCanvas.width = width;
+  baseCanvas.height = height;
+  const baseCtx = baseCanvas.getContext('2d', { alpha: false });
+  if (!baseCtx) throw new Error('2D canvas unavailable for terrain base');
+  const baseImage = baseCtx.createImageData(width, height);
+  const basePixels = baseImage.data;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
       const elev = grids.elevation[i] ?? 0;
-      const px = x * cw;
-      const py = y * ch;
-      const w = Math.ceil(cw) + 1;
-      const h = Math.ceil(ch) + 1;
-
+      let color: Rgb;
       if (elev < seaLevel) {
-        const water = waterColor(seaLevel - elev);
-        ctx.fillStyle = toRgba(water);
-        ctx.fillRect(px, py, w, h);
-        continue;
+        color = waterColor(seaLevel - elev);
+      } else {
+        const biome = grids.biome[i] ?? 0;
+        let base = BIOME_COLORS[biome] ?? BIOME_COLORS[8]!;
+        if (biome === 2) {
+          base = mix(WATER_SHALLOW, { r: 122, g: 160, b: 158 }, 0.5);
+        } else if (biome === 3) {
+          base = mix(base, RIVER_INK, 0.22);
+        }
+        const eL = grids.elevation[y * width + Math.max(0, x - 1)] ?? elev;
+        const eR = grids.elevation[y * width + Math.min(width - 1, x + 1)] ?? elev;
+        const eU = grids.elevation[Math.max(0, y - 1) * width + x] ?? elev;
+        const eD = grids.elevation[Math.min(height - 1, y + 1) * width + x] ?? elev;
+        const gx = (eR - eL) / 20;
+        const gy = (eD - eU) / 20;
+        const slope = Math.min(2.4, Math.sqrt(gx * gx + gy * gy) / 26);
+        const light = Math.max(0.62, Math.min(1.34, 1 - (gx * 0.55 + gy * 0.55) * 0.06 + slope * 0.14));
+        const altitude = Math.max(0, Math.min(1, (elev - seaLevel) / 5000));
+        color = shade(base, light);
+        color = mix(color, { r: 244, g: 236, b: 214 }, altitude * 0.16);
+        if (biome >= 4) color = mix(color, { r: 252, g: 250, b: 246 }, altitude * 0.22);
       }
-
-      const biome = grids.biome[i] ?? 0;
-      let base = BIOME_COLORS[biome] ?? BIOME_COLORS[8]!;
-
-      if (biome === 2) {
-        base = mix(WATER_SHALLOW, { r: 122, g: 160, b: 158 }, 0.5);
-      } else if (biome === 3) {
-        base = mix(base, RIVER_INK, 0.22);
-      }
-
-      // hillshade from the NW: brighter on NW-facing slopes, darker in the SE lee
-      const eL = grids.elevation[y * width + Math.max(0, x - 1)] ?? elev;
-      const eR = grids.elevation[y * width + Math.min(width - 1, x + 1)] ?? elev;
-      const eU = grids.elevation[Math.max(0, y - 1) * width + x] ?? elev;
-      const eD = grids.elevation[Math.min(height - 1, y + 1) * width + x] ?? elev;
-      const gx = (eR - eL) / 20; // decimetres per cell -> slope in metres
-      const gy = (eD - eU) / 20;
-      const slope = Math.min(2.4, Math.sqrt(gx * gx + gy * gy) / 26);
-      const light = Math.max(0.62, Math.min(1.34, 1 - (gx * 0.55 + gy * 0.55) * 0.06 + slope * 0.14));
-
-      // high ground lightens, low ground warms toward paper
-      const altitude = Math.max(0, Math.min(1, (elev - seaLevel) / 5000));
-      let color = shade(base, light);
-      color = mix(color, { r: 244, g: 236, b: 214 }, altitude * 0.16);
-      if (biome >= 4) color = mix(color, { r: 252, g: 250, b: 246 }, altitude * 0.22);
-
-      ctx.fillStyle = toRgba(color);
-      ctx.fillRect(px, py, w, h);
+      const at = i * 4;
+      basePixels[at] = color.r;
+      basePixels[at + 1] = color.g;
+      basePixels[at + 2] = color.b;
+      basePixels[at + 3] = 255;
     }
   }
+  baseCtx.putImageData(baseImage, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(baseCanvas, 0, 0, size, size);
 
   // ---- pass 2: rivers (tapered ink strokes from the river width tier)
   for (let y = 0; y < height; y++) {

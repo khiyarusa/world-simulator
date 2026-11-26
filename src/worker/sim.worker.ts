@@ -5,16 +5,15 @@
  * rate (docs/TECHNICAL_ARCHITECTURE.md §6). It idles completely while paused.
  */
 import { asErrorMessage, SimError } from '../core/errors.ts';
-import { worldChecksum } from '../sim/state/checksum.ts';
 import { generateV1 } from '../sim/world/generate.v1.ts';
 import { runDay } from '../sim/systems/pipeline.ts';
-import { civName, settlementName } from '../sim/world/names.ts';
 import { populationOf } from '../sim/society/state.ts';
 import { CAPACITY, type WorldRecipe, type WorldState } from '../sim/state/worldState.ts';
 import { deserializeWorld, encodeSnapshot, SAVE_SCHEMA_VERSION } from './serialize.ts';
 import { captureWorld } from './snapshot.ts';
 import { Scheduler } from './scheduler.ts';
-import { MAX_DELTA_HZ, type Cmd, type MirrorDelta, type SaveShard, type SettlementDetail, type Speed, type WorldMetaMsg, type WorkerMsg } from './protocol.ts';
+import { MAX_DELTA_HZ, type Cmd, type MirrorDelta,  type SaveShard, type Speed, type WorldMetaMsg, type WorkerMsg } from './protocol.ts';
+import { runQuery, runPlayer } from './queryHandler.ts';
 
 interface WorkerScope {
   postMessage(message: WorkerMsg, transfer?: Transferable[]): void;
@@ -32,6 +31,7 @@ interface MirrorSet {
   pop: Int32Array;
   civ: Uint8Array;
   tier: Uint8Array;
+  state: Uint8Array;
 }
 
 class MirrorPool {
@@ -52,19 +52,21 @@ class MirrorPool {
       pop: new Int32Array(this.cap),
       civ: new Uint8Array(this.cap),
       tier: new Uint8Array(this.cap),
+      state: new Uint8Array(this.cap),
     };
   }
 
   release(buffers: readonly ArrayBuffer[]): void {
-    if (buffers.length !== 4) return;
-    const [idBuf, popBuf, civBuf, tierBuf] = buffers;
-    if (!idBuf || !popBuf || !civBuf || !tierBuf) return;
+    if (buffers.length !== 5) return;
+    const [idBuf, popBuf, civBuf, tierBuf, stateBuf] = buffers;
+    if (!idBuf || !popBuf || !civBuf || !tierBuf || !stateBuf) return;
     this.inFlight = Math.max(0, this.inFlight - 1);
     this.free.push({
       id: new Uint16Array(idBuf),
       pop: new Int32Array(popBuf),
       civ: new Uint8Array(civBuf),
       tier: new Uint8Array(tierBuf),
+      state: new Uint8Array(stateBuf),
     });
   }
 }
@@ -160,14 +162,36 @@ function buildDelta(): MirrorDelta | null {
   if (!buffers) return null;
   const s = state.settlements;
   const count = Math.min(s.count, CAPACITY.settlements);
+  const soc = state.society;
   for (let i = 0; i < count; i++) {
+    const trendBase = i * 6;
     buffers.id[i] = i;
-    buffers.pop[i] = populationOf(state.society, i);
+    buffers.pop[i] = populationOf(soc, i);
     buffers.civ[i] = s.civ[i] ?? 0;
     buffers.tier[i] = s.tier[i] ?? 0;
+    const flags = soc.flags[i] ?? 0;
+    let visual = flags & 0b1111;
+    if ((soc.occupier[i] ?? 0) !== 0) visual |= 16;
+    if ((soc.surplusYears[i] ?? 0) >= 12 && (soc.stability[i] ?? 0) >= 60) visual |= 32;
+    const trendCount = soc.trendCount[i] ?? 0;
+    if (trendCount >= 2) {
+      const first = soc.trendPop[trendBase] ?? 0;
+      const last = soc.trendPop[trendBase + trendCount - 1] ?? 0;
+      if (last < first) visual |= 64;
+    }
+    buffers.state[i] = visual;
   }
   seq++;
-  return { seq, day: state.day, count, id: buffers.id, pop: buffers.pop, civ: buffers.civ, tier: buffers.tier };
+  return {
+    seq,
+    day: state.day,
+    count,
+    id: buffers.id,
+    pop: buffers.pop,
+    civ: buffers.civ,
+    tier: buffers.tier,
+    state: buffers.state,
+  };
 }
 
 function maybeEmitDelta(force = false): void {
@@ -183,7 +207,7 @@ function maybeEmitDelta(force = false): void {
   }
   pendingDelta = false;
   lastEmitAt = t;
-  post({ t: 'delta', delta }, [delta.id.buffer, delta.pop.buffer, delta.civ.buffer, delta.tier.buffer]);
+  post({ t: 'delta', delta }, [delta.id.buffer, delta.pop.buffer, delta.civ.buffer, delta.tier.buffer, delta.state.buffer]);
 }
 
 function worldMeta(): WorldMetaMsg | null {
@@ -206,33 +230,6 @@ function worldMeta(): WorldMetaMsg | null {
       pop: s.pop.slice(0, s.count),
     },
     civs: { nameIdx: c.nameIdx.slice(0, c.count), colorIdx: c.colorIdx.slice(0, c.count) },
-  };
-}
-
-function settlementDetail(id: number): SettlementDetail | null {
-  if (!state) return null;
-  const s = state.settlements;
-  if (id < 0 || id >= s.count) return null;
-  const x = s.x[id] ?? 0;
-  const y = s.y[id] ?? 0;
-  const i = y * state.width + x;
-  const civId = s.civ[id] ?? 0;
-  return {
-    id,
-    name: settlementName(state.recipe.seed, s.nameIdx[id] ?? id),
-    civName: civName(state.recipe.seed, state.civs.nameIdx[civId] ?? civId),
-    civId,
-    x,
-    y,
-    pop: populationOf(state.society, id),
-    tier: s.tier[id] ?? 0,
-    foundedDay: s.foundedDay[id] ?? 1,
-    biome: state.grids.biome[i] ?? 0,
-    riverId: state.grids.riverId[i] ?? 0,
-    lakeId: state.grids.lakeId[i] ?? 0,
-    fertility: state.grids.fertility[i] ?? 0,
-    resource: state.grids.resource[i] ?? 0,
-    owner: state.grids.owner[i] ?? 0,
   };
 }
 
@@ -401,19 +398,30 @@ function handle(cmd: Cmd): void {
       if (pendingDelta) maybeEmitDelta(true);
       break;
     case 'query': {
-      if (!state) {
-        post({ t: 'queryResult', qid: cmd.qid, data: null });
-        break;
+      const response = runQuery(state, cmd.what, speed, selectedId);
+      const transfer: Transferable[] = [];
+      if (cmd.what.kind === 'layer' && response.ok) {
+        const data = response.data as { cells?: Uint8Array | null; cells2?: Uint8Array | null };
+        if (data.cells) transfer.push(data.cells.buffer);
+        if (data.cells2) transfer.push(data.cells2.buffer);
       }
-      const data =
-        cmd.what.kind === 'world'
-          ? { day: state.day, checksum: worldChecksum(state), counts: { settlements: state.settlements.count, civs: state.civs.count } }
-          : cmd.what.kind === 'settlement'
-            ? settlementDetail(cmd.what.id)
-            : cmd.what.kind === 'settlement-list'
-              ? Array.from({ length: state.settlements.count }, (_, i) => settlementDetail(i))
-              : { stages: 20, selected: selectedId, speed };
-      post({ t: 'queryResult', qid: cmd.qid, data });
+      post({ t: 'queryResult', qid: cmd.qid, response }, transfer.length > 0 ? transfer : undefined);
+      break;
+    }
+    case 'player': {
+      const result = runPlayer(state, cmd.command);
+      post({
+        t: 'commandResult',
+        token: cmd.token,
+        ok: result.ok,
+        code: result.code,
+        message: result.message,
+        eventId: result.eventId,
+        effects: result.effects,
+        cooldownDays: result.cooldownDays,
+      });
+      // a command changes what the map and panels must show; push the new mirror immediately
+      if (result.ok) maybeEmitDelta(true);
       break;
     }
     case 'dispose':

@@ -65,6 +65,10 @@ export interface MetaDoc {
     techDiscovered?: number;
     starvationDeaths?: number;
     epidemicDeaths?: number;
+    blessings?: number;
+    blights?: number;
+    fertilized?: number;
+    incited?: number;
   };
   rng: RngState[];
   report: GenerationReport;

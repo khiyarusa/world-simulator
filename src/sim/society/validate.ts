@@ -10,8 +10,10 @@ import type { WorldState } from '../state/worldState.ts';
 import {
   COHORT_COUNT,
   CIV_STRIDE,
+  INTERVENTION_CAPACITY,
   RES_COUNT,
   ROUTE_CAPACITY,
+  STATS_CAPACITY,
   TREATY_CAPACITY,
   WAR_CAPACITY,
   type SocietyState,
@@ -86,9 +88,10 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     const id = s.eventId[k] ?? 0;
     if (id <= 0 || mainIds.has(id)) fail(`event id ${id} is not unique and positive`);
     const cause = s.eventCause[k] ?? 0;
-    if (cause !== 0 && cause !== -1) {
+    if (cause !== 0 && cause !== -1 && cause !== -2) {
       // Cause availability is a history-retention property, measured over every event the harness
       // observed (S3-A4); a save can legitimately have evicted an ancestor. Causality is structural.
+      // -1 is an explicit environmental/systemic root; -2 is a player intervention root.
       if (cause >= id) fail(`event ${id} references a later cause (${cause})`);
     }
     const day = s.eventDay[k] ?? 0;
@@ -147,5 +150,43 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     if ((s.decisionActor[k] ?? 0) >= Math.max(1, civs) && (s.decisionActor[k] ?? 0) > settlements) {
       fail(`decision ${k} references an invalid actor`);
     }
+  }
+
+  // --- Stage 4 player interventions: bounded, ordered and pointed at real entities
+  if (s.interventionCount > INTERVENTION_CAPACITY) fail(`intervention count ${s.interventionCount} over capacity`);
+  for (let kind = 0; kind < 4; kind++) {
+    const last = s.interventionLastDay[kind] ?? 0;
+    if (!Number.isInteger(last) || last < 0) fail(`intervention cooldown ${kind} is ${last}`);
+  }
+  for (let k = 0; k < s.interventionCount; k++) {
+    const kind = s.interventionKind[k] ?? 0;
+    if (kind < 0 || kind > 3) fail(`intervention ${k} has unknown kind ${kind}`);
+    const a = s.interventionA[k] ?? 0;
+    if (kind === 3) {
+      const b = s.interventionB[k] ?? 0;
+      if (a >= civs || b >= civs || a === b) fail(`incite ${k} references invalid civilizations`);
+    } else if (a >= settlements) {
+      fail(`intervention ${k} references missing settlement ${a}`);
+    }
+    const start = s.interventionStart[k] ?? 0;
+    const end = s.interventionEnd[k] ?? 0;
+    if (start < 1 || end < start) fail(`intervention ${k} has an invalid window`);
+    const intensity = s.interventionIntensity[k] ?? 0;
+    if (intensity < 0 || intensity > 3) fail(`intervention ${k} intensity ${intensity}`);
+    const resource = s.interventionResource[k] ?? 255;
+    if (resource !== 255 && (resource < 0 || resource >= RES_COUNT)) fail(`intervention ${k} resource ${resource}`);
+    if ((s.interventionAmount[k] ?? 0) < 0) fail(`intervention ${k} has a negative amount`);
+  }
+
+  // --- yearly series: chronological and bounded
+  if (s.statsCount > STATS_CAPACITY) fail(`stats count ${s.statsCount} over capacity`);
+  let lastYear = 0;
+  const stCap = s.statsYear.length;
+  for (let n = 0; n < s.statsCount; n++) {
+    const k = (s.statsHead - s.statsCount + n + stCap * 2) % stCap;
+    const year = s.statsYear[k] ?? 0;
+    if (year < 1 || year < lastYear) fail(`stats year ${year} is out of order`);
+    lastYear = year;
+    if ((s.statsPopulation[k] ?? 0) < 0) fail(`stats population at year ${year} is negative`);
   }
 }

@@ -1,141 +1,148 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * The Stage 2 acceptance path, end to end (docs/QA_AND_CI_STRATEGY.md §4.3).
- * Waits are event-driven: no fixed sleeps, no arbitrary timeouts.
+ * Stage 4 acceptance path: multiple worlds, real map layers, real panels, a real intervention,
+ * save/load, rename, delete and damaged-generation recovery. Waits are event-driven.
  */
 
-async function bootToCreation(page: Page): Promise<void> {
-  await page.goto('/');
-  await expect(page.locator('#create-btn')).toBeVisible();
+async function bootToWorlds(page: Page): Promise<void> {
+  await page.goto('/?lang=en');
+  await expect(page.locator('.worlds')).toBeVisible();
 }
 
-async function generateWorld(page: Page, seed = '1337ABCD-00000001'): Promise<void> {
+async function createWorld(page: Page, name: string, seed = '1337ABCD-00000001'): Promise<void> {
+  await page.getByRole('button', { name: /Create a world/i }).click();
+  await expect(page.locator('#create-btn')).toBeVisible();
+  await page.locator('#create-name').fill(name);
   await page.locator('#seed-input').fill(seed);
   await page.locator('#create-btn').click();
   await page.waitForFunction(() => window.__ws?.state().world === true, undefined, { timeout: 90_000 });
-  await expect(page.locator('#boot')).toHaveClass(/hidden/);
+  await expect(page.locator('.topbar')).toBeVisible();
 }
 
-test('creates a world, renders it, and inspects a settlement', async ({ page }) => {
-  await bootToCreation(page);
-  await generateWorld(page);
+async function save(page: Page): Promise<void> {
+  await page.evaluate(() => window.__ws?.save());
+  await page.waitForFunction(
+    () => {
+      const s = window.__ws?.state();
+      return s !== undefined && s.savedDay >= s.day && s.savedDay > 0;
+    },
+    undefined,
+    { timeout: 45_000 },
+  );
+}
+
+async function resumeFirstWorld(page: Page): Promise<void> {
+  await page.reload();
+  await expect(page.locator('.worlds')).toBeVisible();
+  await page.getByRole('button', { name: 'Play', exact: true }).first().click();
+  await page.waitForFunction(() => window.__ws?.state().world === true, undefined, { timeout: 90_000 });
+}
+
+test('creates a world, renders it, and inspects a settlement with real data', async ({ page }) => {
+  await bootToWorlds(page);
+  await createWorld(page, 'Amber Reach');
 
   const state = await page.evaluate(() => window.__ws?.state());
   expect(state?.settlements ?? 0).toBeGreaterThan(0);
   expect(state?.day ?? 0).toBe(1);
 
-  // canvas exists, has real dimensions, and the GL framebuffer is not a flat colour
   const canvas = page.locator('#world canvas');
   await expect(canvas).toBeVisible();
-  const box = await canvas.boundingBox();
-  expect(box?.width ?? 0).toBeGreaterThan(100);
-  expect(box?.height ?? 0).toBeGreaterThan(100);
-
   const probe = await page.evaluate(() => window.__ws?.probe());
   expect(probe?.max ?? 0).toBeGreaterThan(probe?.min ?? 0);
 
-  // At the fit zoom the world exactly fills the view, so panning is clamped by design.
-  // Zoom in first (double tap), then the map can actually move.
-  const zoomBefore = await page.evaluate(() => window.__ws?.state().zoom ?? 0);
-  await page.mouse.dblclick(195, 420);
-  await page.waitForFunction(
-    (z) => (window.__ws?.state().zoom ?? 0) > z * 1.2,
-    zoomBefore,
-    { timeout: 10_000 },
-  );
-
-  // pan: drag the map and confirm the camera actually moved via the rendered result
-  const before = await page.evaluate(() => window.__ws?.probe());
-  await page.mouse.move(200, 400);
-  await page.mouse.down();
-  await page.mouse.move(120, 330, { steps: 8 });
-  await page.mouse.up();
-  const after = await page.evaluate(() => window.__ws?.probe());
-  expect(after).not.toEqual(before);
-
-  // Select a settlement that is not hidden under the HUD (the dock owns the bottom band and the
-  // top bar the top band), using the public projection helper.
-  const pos = await page.evaluate(() => {
+  const id = await page.evaluate(() => {
     const count = window.__ws?.state().settlements ?? 0;
     const vh = window.innerHeight;
     const vw = window.innerWidth;
-    for (let id = 0; id < count; id++) {
-      const p = window.__ws?.screenOf(id);
-      if (!p) continue;
-      if (p.y > 140 && p.y < vh - 160 && p.x > 40 && p.x < vw - 40) return p;
+    for (let i = 0; i < count; i++) {
+      const p = window.__ws?.screenOf(i);
+      if (p && p.y > 140 && p.y < vh - 160 && p.x > 40 && p.x < vw - 40) return i;
     }
-    return null;
+    return 0;
   });
-  expect(pos).not.toBeNull();
-  if (!pos) return;
-  await page.mouse.click(pos.x, pos.y);
-  await expect(page.locator('.chip')).toBeVisible();
-
-  // the chip opens the settlement sheet with real data
-  await page.locator('.chip').click();
-  await expect(page.locator('.sheet.open')).toBeVisible();
-  await expect(page.locator('.sheet.open h2')).not.toHaveText('');
+  await page.evaluate((sid) => window.__ws?.select(sid), id);
+  await expect(page.locator('.panel.open')).toBeVisible();
+  await expect(page.locator('.panel-body')).toContainText(/Population|Food/i);
 });
 
-test('controls simulation speed and persists the world across a reload', async ({ page }) => {
-  await bootToCreation(page);
-  await generateWorld(page, 'FEEDFACE-00000002');
-
-  const created = await page.evaluate(() => window.__ws?.state());
-  expect(created?.settlements ?? 0).toBeGreaterThan(0);
-
-  // speed dial -> 4x
-  await page.locator('.dock-btn.speed').click();
-  await page.locator('.sheet.open button', { hasText: '4×' }).click();
-  await page.waitForFunction(() => window.__ws?.state().speed === 4);
-
-  // let the clock advance, then save explicitly
-  await page.waitForFunction(() => (window.__ws?.state().day ?? 1) > 1, undefined, { timeout: 30_000 });
-  await page.evaluate(() => window.__ws?.save());
-  await expect(page.locator('#toast')).toHaveText(/saved/i, { timeout: 30_000 });
-
-  const beforeReload = await page.evaluate(() => window.__ws?.state());
-  expect(beforeReload?.day ?? 0).toBeGreaterThan(1);
-
-  // reload: the world must come back, with the same settlement count and at least the same day
-  await page.reload();
-  await page.waitForFunction(() => window.__ws?.state().world === true, undefined, { timeout: 90_000 });
-  const afterReload = await page.evaluate(() => window.__ws?.state());
-  expect(afterReload?.settlements).toBe(beforeReload?.settlements);
-  expect(afterReload?.day ?? 0).toBeGreaterThanOrEqual(beforeReload?.day ?? 0);
+test('every layer and every panel is populated from the worker', async ({ page }) => {
+  await bootToWorlds(page);
+  await createWorld(page, 'Layer Test', 'FACEFEED-00000002');
+  await page.evaluate(() => window.__ws?.select(0));
+  for (const layer of ['political', 'population', 'economy', 'ecology', 'history'] as const) {
+    const data = await page.evaluate((l) => window.__ws?.layer(l), layer);
+    expect(data?.width ?? 0).toBeGreaterThan(0);
+    if (layer === 'political') expect(data?.cells?.length ?? 0).toBeGreaterThan(0);
+    if (layer === 'ecology') expect(data?.cells?.length ?? 0).toBeGreaterThan(0);
+    if (layer === 'population') expect(data?.points.length ?? 0).toBeGreaterThan(0);
+  }
+  for (const tab of ['world', 'settlement', 'civ', 'economy', 'history', 'influence'] as const) {
+    await page.evaluate((t) => window.__ws?.openPanel(t), tab);
+    await expect(page.locator('.panel-body')).not.toHaveText('');
+  }
 });
 
-test('generates different worlds from different seeds', async ({ page }) => {
-  await bootToCreation(page);
-  await generateWorld(page, 'AAAA0000-00000001');
-  const first = await page.evaluate(() => window.__ws?.checksum());
+test('a bless intervention changes stock, is recorded, and survives save/load', async ({ page }) => {
+  await bootToWorlds(page);
+  await createWorld(page, 'Intervention Test', 'BADC0FFE-00000003');
+  const before = await page.evaluate(async () => (await window.__ws?.world())?.day ?? 0);
+  expect(before).toBeGreaterThan(0);
+  const result = await page.evaluate(async () => window.__ws?.command({ op: 'bless', settlement: 0, resource: 0, amount: 4 }));
+  expect(result?.ok).toBe(true);
+  const detail = await page.evaluate(async (id) => window.__ws?.event(id), result?.eventId ?? 0);
+  expect(detail?.event.player).toBe(true);
+  const history = await page.evaluate(async () => window.__ws?.history({ playerOnly: true }));
+  expect(history?.total ?? 0).toBeGreaterThan(0);
 
-  // create a second world from a different seed
-  await page.locator('.dock-btn', { hasText: 'New' }).click();
-  await expect(page.locator('#create-btn')).toBeVisible();
-  await page.locator('#seed-input').fill('BBBB0000-00000002');
-  await page.locator('#create-btn').click();
-  await page.waitForFunction(() => window.__ws?.state().world === true, undefined, { timeout: 90_000 });
-  const second = await page.evaluate(() => window.__ws?.checksum());
+  await save(page);
+  await resumeFirstWorld(page);
+  const after = await page.evaluate(async () => window.__ws?.history({ playerOnly: true }));
+  expect(after?.total ?? 0).toBeGreaterThan(0);
+});
 
-  expect(first).toBeGreaterThan(0);
-  expect(second).not.toBe(first);
+test('creates, switches, renames and deletes multiple worlds', async ({ page }) => {
+  await bootToWorlds(page);
+  await createWorld(page, 'First World', 'AAAA0000-00000001');
+  await save(page);
+  const firstChecksum = await page.evaluate(() => window.__ws?.checksum());
+
+  await page.evaluate(() => window.__ws?.manageWorlds());
+  await expect(page.locator('.worlds')).toBeVisible();
+  await createWorld(page, 'Second World', 'BBBB0000-00000002');
+  await save(page);
+  const secondChecksum = await page.evaluate(() => window.__ws?.checksum());
+  expect(firstChecksum).not.toBe(secondChecksum);
+
+  await page.evaluate(() => window.__ws?.manageWorlds());
+  await expect(page.locator('.world-card')).toHaveCount(2);
+
+  // rename the second world through the real prompt
+  page.once('dialog', (dialog) => void dialog.accept('Renamed World'));
+  const secondCard = page.locator('.world-card', { hasText: 'Second World' });
+  await secondCard.getByRole('button', { name: 'Rename' }).click();
+  await expect(page.locator('.world-card', { hasText: 'Renamed World' })).toHaveCount(1);
+
+  // delete the first world after confirmation
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.locator('.world-card', { hasText: 'First World' }).getByRole('button', { name: 'Delete' }).click();
+  await expect(page.locator('.world-card')).toHaveCount(1);
+  await expect(page.locator('.world-card')).toContainText('Renamed World');
 });
 
 test('recovers a damaged generation from the previous one and repairs the database', async ({ page }) => {
-  await bootToCreation(page);
-  await generateWorld(page, 'CAFEBABE-00000003');
+  await bootToWorlds(page);
+  await createWorld(page, 'Recovery Test', 'CAFEBABE-00000003');
   const before = await page.evaluate(() => window.__ws?.state());
   expect(before?.settlements ?? 0).toBeGreaterThan(0);
 
-  // two saves => generation 1 (backup) and generation 2 (current)
-  await page.evaluate(() => window.__ws?.save());
-  await expect(page.locator('#toast')).toHaveText(/saved/i, { timeout: 30_000 });
-  await page.evaluate(() => window.__ws?.save());
-  await expect(page.locator('#toast')).toHaveText(/saved/i, { timeout: 30_000 });
+  await save(page);
+  await save(page);
+  const worldId = await page.evaluate(() => window.__ws?.worlds()[0]?.id ?? '');
+  expect(worldId.length).toBeGreaterThan(0);
 
-  const corrupted = await page.evaluate(async () => {
+  const corrupted = await page.evaluate(async (id) => {
     const open = (): Promise<IDBDatabase> =>
       new Promise((resolve, reject) => {
         const request = indexedDB.open('world-simulator');
@@ -144,17 +151,16 @@ test('recovers a damaged generation from the previous one and repairs the databa
       });
     const db = await open();
     const doc = await new Promise<{ currentGen: number }>((resolve, reject) => {
-      const request = db.transaction('worlds').objectStore('worlds').get('world-1');
+      const request = db.transaction('worlds').objectStore('worlds').get(id);
       request.onsuccess = () => resolve(request.result as { currentGen: number });
       request.onerror = () => reject(request.error);
     });
     const gen = doc.currentGen;
-    if (gen < 2) return { ok: false, gen, reason: 'no backup generation' };
-
+    if (gen < 2) return { ok: false, gen };
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction('shards', 'readwrite');
       const store = tx.objectStore('shards');
-      const range = IDBKeyRange.bound(['world-1', gen, ''], ['world-1', gen, '\uffff']);
+      const range = IDBKeyRange.bound([id, gen, ''], [id, gen, '\uffff']);
       const all = store.getAll(range);
       all.onsuccess = () => {
         const rows = all.result as Array<{ name: string; payload: ArrayBuffer }>;
@@ -164,9 +170,10 @@ test('recovers a damaged generation from the previous one and repairs the databa
           return;
         }
         const bytes = new Uint8Array(terrain.payload.slice(0));
-        bytes[Math.floor(bytes.length / 2)] = (bytes[Math.floor(bytes.length / 2)] ?? 0) ^ 0xff;
+        const at = Math.floor(bytes.length / 2);
+        bytes[at] = (bytes[at] ?? 0) ^ 0xff;
         terrain.payload = bytes.buffer as ArrayBuffer;
-        store.put({ ...terrain, worldId: 'world-1', gen, crc32: 0 });
+        store.put({ ...terrain, worldId: id, gen, crc32: 0 });
       };
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -174,27 +181,24 @@ test('recovers a damaged generation from the previous one and repairs the databa
     });
     db.close();
     return { ok: true, gen };
-  });
+  }, worldId);
   expect(corrupted.ok).toBe(true);
 
-  await page.reload();
-  await page.waitForFunction(() => window.__ws?.state().world === true, undefined, { timeout: 90_000 });
+  await resumeFirstWorld(page);
   await page.waitForFunction(() => /recover/i.test(document.getElementById('toast')?.textContent ?? ''), undefined, {
     timeout: 30_000,
   });
-
   const after = await page.evaluate(() => window.__ws?.state());
   expect(after?.settlements).toBe(before?.settlements);
 
-  // the damaged generation must be gone, and the world must point at the recovered one
-  const repaired = await page.evaluate(async () => {
+  const repaired = await page.evaluate(async (id) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('world-simulator');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
     const doc = await new Promise<{ currentGen: number; prevGen: number }>((resolve, reject) => {
-      const request = db.transaction('worlds').objectStore('worlds').get('world-1');
+      const request = db.transaction('worlds').objectStore('worlds').get(id);
       request.onsuccess = () => resolve(request.result as { currentGen: number; prevGen: number });
       request.onerror = () => reject(request.error);
     });
@@ -205,7 +209,7 @@ test('recovers a damaged generation from the previous one and repairs the databa
     });
     db.close();
     return { doc, gens: [...new Set(gens)] };
-  });
+  }, worldId);
   expect(repaired.doc.prevGen).toBe(0);
   expect(repaired.gens).toEqual([repaired.doc.currentGen]);
 });

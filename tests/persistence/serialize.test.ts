@@ -37,7 +37,7 @@ describe('save shards', () => {
     expect(shards.map((s) => s.name).sort()).toEqual(['civs', 'meta', 'settlements', 'terrain']);
 
     const restored = await deserializeWorld(shards);
-    expect(restored.schemaVersion).toBe(3);
+    expect(restored.schemaVersion).toBe(4);
     expect(restored.state.day).toBe(original.day);
     expect(restored.state.recipe.seed).toEqual(original.recipe.seed);
     expect(restored.state.recipe.preset).toBe(original.recipe.preset);

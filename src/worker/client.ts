@@ -4,7 +4,7 @@
  * Owns nothing about the world; it forwards commands and hands events to the session. Buffer
  * recycling is explicit (`release`) so the worker never allocates a delta per emission.
  */
-import type { QueryWhat, SaveShard, Speed, WorkerMsg } from './protocol.ts';
+import type { CommandEffect, PlayerCommand, QueryWhat, SaveShard, Speed, WorkerMsg } from './protocol.ts';
 import type { WorldMetaMsg, MirrorDelta } from './protocol.ts';
 import type { TerrainArrays } from '../core/gridTypes.ts';
 import type { WorldRecipe } from '../sim/state/worldState.ts';
@@ -32,6 +32,15 @@ export interface SaveResult {
   readonly bytes: number;
 }
 
+export interface CommandResult {
+  readonly ok: boolean;
+  readonly code: string;
+  readonly message: string;
+  readonly eventId: number;
+  readonly effects: readonly CommandEffect[];
+  readonly cooldownDays: number;
+}
+
 export interface ClientHandlers {
   onReady(): void;
   onProgress(stage: string, pct: number): void;
@@ -48,7 +57,9 @@ export class WorkerClient {
   private readonly worker: Worker;
   private readonly handlers: ClientHandlers;
   private nextQid = 1;
-  private readonly pending = new Map<number, (data: unknown) => void>();
+  private nextToken = 1;
+  private readonly pending = new Map<number, { resolve: (data: unknown) => void; reject: (e: Error) => void }>();
+  private readonly pendingCommands = new Map<number, (result: CommandResult) => void>();
   private saveBuffer: SaveShard[] = [];
   private saveWaiter: { resolve: (r: SaveResult) => void; reject: (e: Error) => void } | null = null;
 
@@ -100,9 +111,18 @@ export class WorkerClient {
 
   query<T>(what: QueryWhat): Promise<T> {
     const qid = this.nextQid++;
-    return new Promise<T>((resolve) => {
-      this.pending.set(qid, (data) => resolve(data as T));
+    return new Promise<T>((resolve, reject) => {
+      this.pending.set(qid, { resolve: (data) => resolve(data as T), reject });
       this.worker.postMessage({ t: 'query', qid, what });
+    });
+  }
+
+  /** Send a player command. The promise resolves only after the worker has applied or refused it. */
+  command(command: PlayerCommand): Promise<CommandResult> {
+    const token = this.nextToken++;
+    return new Promise<CommandResult>((resolve) => {
+      this.pendingCommands.set(token, resolve);
+      this.worker.postMessage({ t: 'player', token, command });
     });
   }
 
@@ -120,6 +140,7 @@ export class WorkerClient {
     this.worker.postMessage({ t: 'dispose' });
     this.worker.terminate();
     this.pending.clear();
+    this.pendingCommands.clear();
     this.saveWaiter = null;
   }
 
@@ -142,7 +163,13 @@ export class WorkerClient {
         // hand the buffers back so the worker can reuse them
         this.worker.postMessage({
           t: 'release',
-          buffers: [msg.delta.id.buffer, msg.delta.pop.buffer, msg.delta.civ.buffer, msg.delta.tier.buffer],
+          buffers: [
+            msg.delta.id.buffer,
+            msg.delta.pop.buffer,
+            msg.delta.civ.buffer,
+            msg.delta.tier.buffer,
+            msg.delta.state.buffer,
+          ],
         });
         break;
       }
@@ -150,10 +177,26 @@ export class WorkerClient {
         this.handlers.onStats(msg);
         break;
       case 'queryResult': {
-        const resolve = this.pending.get(msg.qid);
-        if (resolve) {
+        const waiter = this.pending.get(msg.qid);
+        if (waiter) {
           this.pending.delete(msg.qid);
-          resolve(msg.data);
+          if (msg.response.ok) waiter.resolve(msg.response.data);
+          else waiter.reject(new Error(`${msg.response.code}: ${msg.response.message}`));
+        }
+        break;
+      }
+      case 'commandResult': {
+        const waiter = this.pendingCommands.get(msg.token);
+        if (waiter) {
+          this.pendingCommands.delete(msg.token);
+          waiter({
+            ok: msg.ok,
+            code: msg.code,
+            message: msg.message,
+            eventId: msg.eventId,
+            effects: msg.effects,
+            cooldownDays: msg.cooldownDays,
+          });
         }
         break;
       }

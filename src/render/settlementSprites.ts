@@ -9,7 +9,7 @@ import { CanvasSource, Texture } from 'pixi.js';
 
 const SIZE = 64;
 
-function glyphCanvas(tier: number): HTMLCanvasElement {
+function glyphCanvas(tier: number, ruined: boolean): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = SIZE;
   canvas.height = SIZE;
@@ -27,6 +27,19 @@ function glyphCanvas(tier: number): HTMLCanvasElement {
     ctx.strokeStyle = pass === 0 ? 'rgba(14,13,11,0.62)' : '#ffffff';
     draw(ctx, tier);
     ctx.restore();
+  }
+  if (ruined) {
+    // a ruined settlement keeps its silhouette but loses whole quarters: readable at 15 px
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(SIZE * 0.58, SIZE * 0.42, SIZE * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(SIZE * 0.38, SIZE * 0.64, SIZE * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(SIZE * 0.2, SIZE * 0.78, SIZE * 0.6, 2.2);
   }
   return canvas;
 }
@@ -111,12 +124,19 @@ function draw(ctx: CanvasRenderingContext2D, tier: number): void {
   }
 }
 
-/** Five tier textures + a soft ring used for selection. */
+/**
+ * Five normal tier textures, then the five ruined variants (index tier + 5). Keeping both in one
+ * array means the renderer can switch a sprite's texture without allocating at runtime.
+ */
 export function createSettlementTextures(): Texture[] {
   const out: Texture[] = [];
-  for (let tier = 0; tier < 5; tier++) {
-    const source = new CanvasSource({ resource: glyphCanvas(tier), scaleMode: 'linear' });
-    out.push(new Texture({ source }));
+  for (const ruined of [false, true]) {
+    for (let tier = 0; tier < 5; tier++) {
+      const source = new CanvasSource({ resource: glyphCanvas(tier, ruined), scaleMode: 'linear' });
+      out.push(new Texture({ source }));
+    }
   }
   return out;
 }
+
+export const RUINED_TEXTURE_OFFSET = 5;

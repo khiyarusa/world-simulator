@@ -19,7 +19,6 @@ import {
   EVENT_TYPE,
   addCohort,
   addStock,
-  appendChronicle,
   appendEvent,
   EVENT_CAPACITY,
   cohortOf,
@@ -49,9 +48,11 @@ export const RULE = {
 const SEASON_YIELD_PM = [500, 800, 1100, 1000] as const;
 
 import { FLAG_DROUGHT, FLAG_RUINED, FLAG_STARVING, isAlive } from './common.ts';
+import { appendChronicle } from './rings.ts';
 import { landCapacity } from './economy.ts';
 import { withStream } from './streams.ts';
 import { retainEvent } from './vital.ts';
+import { blightPressurePm } from './interventions.ts';
 
 export { isAlive } from './common.ts';
 
@@ -160,6 +161,9 @@ export function runProduction(world: WorldState, day: number): void {
     milli = mulDiv(milli, 1000 + agriTech * 80, 1000);
     if (infraHas(soc, i, INFRA.indexOf('irrigation'))) milli = mulDiv(milli, 1150, 1000);
     if ((soc.occupier[i] ?? 0) !== 0) milli = mulDiv(milli, 800, 1000); // an occupied settlement produces less
+    // a player blight is a real yield pressure for as long as its persisted row is active
+    const blight = blightPressurePm(world, i);
+    if (blight < 1000) milli = mulDiv(milli, blight, 1000);
     flow(world, i, RES.FOOD, milli);
 
     // --- water: local source or a well; a dry settlement cannot sustain its people

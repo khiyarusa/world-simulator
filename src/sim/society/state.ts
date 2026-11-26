@@ -8,7 +8,7 @@
  * growth exists anywhere in this file.
  */
 import { CAPACITY } from '../state/worldState.ts';
-import { allocateVitalRing, appendVital, type VitalRing } from './vital.ts';
+import { appendVital, type VitalRing } from './vital.ts';
 
 export const COHORT_COUNT = 8;
 /** Civilization-major arrays use this fixed stride. It must never follow `civs.count`, or a new
@@ -63,6 +63,25 @@ export const DECISION_CAPACITY = 64;
 export const ROUTE_CAPACITY = 400;
 export const TREATY_CAPACITY = 64;
 export const WAR_CAPACITY = 32;
+
+/** Stage 4: player interventions and the yearly world series. Both rings are bounded and persisted. */
+export const INTERVENTION_CAPACITY = 64;
+export const STATS_CAPACITY = 256;
+/** Six yearly population samples per settlement: enough for an honest sparkline, small on disk. */
+export const SETTLEMENT_TREND_SAMPLES = 6;
+
+/** The four interventions of GDD §3. Order is part of the persisted format. */
+export const INTERVENTION = { BLESS: 0, BLIGHT: 1, FERTILIZE: 2, INCITE: 3 } as const;
+export type InterventionKind = (typeof INTERVENTION)[keyof typeof INTERVENTION];
+export const INTERVENTION_NAMES = ['bless', 'blight', 'fertilize', 'incite'] as const;
+/** GDD §3 cooldowns: one year, three years, five years, five years. */
+export const INTERVENTION_COOLDOWN_DAYS = [360, 1080, 1800, 1800] as const;
+
+/**
+ * Root-cause markers. A positive value is an event id; these two are the honest "no earlier event"
+ * cases. `PLAYER` is a real cause, not a decoration: it is how the UI answers "did I do this?".
+ */
+export const CAUSE = { ROOT: -1, PLAYER: -2 } as const;
 
 /** Decision kinds recorded by the utility systems (docs/SIMULATION_MODEL.md §7). */
 export const DECISION = {
@@ -120,6 +139,10 @@ export const EVENT_TYPE = {
   TREATY_BROKEN: 22,
   TECH_SPREAD: 23,
   BLIGHT: 24,
+  /** Stage 4 player actions. BLIGHT (24) doubles as the player blight type when cause = PLAYER. */
+  PLAYER_BLESS: 25,
+  PLAYER_FERTILIZE: 26,
+  PLAYER_INCITE: 27,
 } as const;
 export const EVENT_TYPE_NAMES = [
   'settlement_founded',
@@ -147,6 +170,9 @@ export const EVENT_TYPE_NAMES = [
   'treaty_broken',
   'tech_spread',
   'blight',
+  'player_bless',
+  'player_fertilize',
+  'player_incite',
 ] as const;
 
 export const SEVERITY = { TRACE: 1, LOCAL: 2, NOTABLE: 3, MAJOR: 4, HISTORIC: 5 } as const;
@@ -285,108 +311,48 @@ export interface SocietyState {
   warGateGrievance: Uint16Array;
   warGateCapacity: Uint16Array;
   warGateUtility: Uint16Array;
-}
 
-export function allocateSociety(): SocietyState {
-  const s = CAPACITY.settlements;
-  const c = CAPACITY.civs;
-  return {
-    cohorts: new Int32Array(s * COHORT_COUNT),
-    occShare: new Uint16Array(s * 5),
-    stock: new Int32Array(s * RES_COUNT),
-    cap: new Int32Array(s * RES_COUNT),
-    carry: new Uint16Array(s * RES_COUNT),
-    treasury: new Int32Array(s),
-    health: new Uint8Array(s).fill(70),
-    stability: new Uint8Array(s).fill(60),
-    literacy: new Uint8Array(s),
-    infra: new Uint32Array(s),
-    flags: new Uint8Array(s),
-    foundedDay: new Uint32Array(s),
-    lastDroughtEvent: new Int32Array(s),
-    lastFamineEvent: new Int32Array(s),
-    price: new Uint16Array(s * RES_COUNT).fill(1000),
-    occupier: new Uint8Array(s),
-    surplusYears: new Uint8Array(s),
-    lastEpidemicDay: new Int32Array(s),
-    historyDay: new Int32Array(s * 3),
+  // --- Stage 4 player interventions (schema v4). A row is one action the player actually took.
+  interventionCount: number;
+  interventionHead: number;
+  interventionKind: Uint8Array;
+  /** affected settlement, or the attacking civilization for `incite` */
+  interventionA: Uint16Array;
+  /** defender civilization for `incite`, else 0 */
+  interventionB: Uint8Array;
+  interventionStart: Int32Array;
+  /** day the lingering effect ends; equal to start for instantaneous actions */
+  interventionEnd: Int32Array;
+  /** 1..3 for blight/fertilize, 0 otherwise */
+  interventionIntensity: Uint8Array;
+  /** RES id for bless, 255 otherwise */
+  interventionResource: Uint8Array;
+  /** units granted (bless) or people/fertility touched, for display */
+  interventionAmount: Int32Array;
+  /** last day each intervention kind was used, indexed by INTERVENTION */
+  interventionLastDay: Int32Array;
 
-    culture: new Int8Array(c * 3),
-    tech: new Uint8Array(c * 12),
-    legitimacy: new Uint8Array(c).fill(50),
-    relation: new Int8Array(c * c),
-    grievance: new Uint16Array(c * c),
-    techProgress: new Uint16Array(c * 12),
-    army: new Int32Array(c),
-    exhaustion: new Uint8Array(c),
-    warWins: new Uint16Array(c),
+  // --- yearly world series (schema v4): measured, not synthesised. Cumulative counters are kept
+  // cumulative so a chart can difference them without a second persisted counter.
+  statsCount: number;
+  statsHead: number;
+  statsYear: Uint16Array;
+  statsPopulation: Int32Array;
+  statsSettlements: Uint16Array;
+  statsCivs: Uint8Array;
+  statsFoodProduced: Int32Array;
+  statsTradeVolume: Int32Array;
+  statsTreasury: Int32Array;
+  statsWars: Uint8Array;
+  /** mean soil fertility over living settlement tiles, 0..255 */
+  statsFertility: Uint8Array;
+  /** living settlements currently under a drought flag */
+  statsDrought: Uint16Array;
 
-    regionDroughtMonths: new Uint8Array(256),
-    regionPrecip: new Uint8Array(256).fill(100),
-    regionTempAnomaly: new Int8Array(256),
-
-    eventCount: 0,
-    eventHead: 0,
-    eventId: new Int32Array(EVENT_CAPACITY),
-    eventDay: new Int32Array(EVENT_CAPACITY),
-    eventType: new Uint8Array(EVENT_CAPACITY),
-    eventSeverity: new Uint8Array(EVENT_CAPACITY),
-    eventPlace: new Uint16Array(EVENT_CAPACITY),
-    eventActorA: new Uint8Array(EVENT_CAPACITY),
-    eventActorB: new Uint8Array(EVENT_CAPACITY),
-    eventMagnitude: new Int16Array(EVENT_CAPACITY),
-    eventCause: new Int32Array(EVENT_CAPACITY),
-    nextEventId: 1,
-
-    decisionCount: 0,
-    decisionHead: 0,
-    decisionDay: new Int32Array(DECISION_CAPACITY),
-    decisionKind: new Uint8Array(DECISION_CAPACITY),
-    decisionActor: new Uint8Array(DECISION_CAPACITY),
-    decisionChosen: new Uint8Array(DECISION_CAPACITY),
-    decisionScore: new Uint16Array(DECISION_CAPACITY),
-
-    chronicleCount: 0,
-    chronicleHead: 0,
-    chronicleYear: new Uint16Array(4096),
-    chronicleCiv: new Uint8Array(4096),
-    chroniclePop: new Int32Array(4096),
-    chronicleSettlements: new Uint16Array(4096),
-    chronicleEvents: new Uint8Array(4096),
-
-    vital: allocateVitalRing(),
-
-    routeCount: 0,
-    routeA: new Uint16Array(ROUTE_CAPACITY),
-    routeB: new Uint16Array(ROUTE_CAPACITY),
-    routeCapacity: new Uint16Array(ROUTE_CAPACITY),
-    routeLength: new Uint16Array(ROUTE_CAPACITY),
-    routeTariff: new Uint8Array(ROUTE_CAPACITY),
-    routeCreated: new Int32Array(ROUTE_CAPACITY),
-    routeVolume: new Int32Array(ROUTE_CAPACITY),
-    routeIdle: new Uint8Array(ROUTE_CAPACITY),
-
-    treatyCount: 0,
-    treatyA: new Uint8Array(TREATY_CAPACITY),
-    treatyB: new Uint8Array(TREATY_CAPACITY),
-    treatyType: new Uint8Array(TREATY_CAPACITY),
-    treatyStart: new Int32Array(TREATY_CAPACITY),
-    treatyEnd: new Int32Array(TREATY_CAPACITY),
-
-    warCount: 0,
-    warA: new Uint8Array(WAR_CAPACITY),
-    warB: new Uint8Array(WAR_CAPACITY),
-    warStart: new Int32Array(WAR_CAPACITY),
-    warScore: new Int8Array(WAR_CAPACITY),
-    warExhaustA: new Uint8Array(WAR_CAPACITY),
-    warExhaustB: new Uint8Array(WAR_CAPACITY),
-    warBattles: new Uint16Array(WAR_CAPACITY),
-    warCause: new Int32Array(WAR_CAPACITY),
-    warGateStrength: new Uint16Array(WAR_CAPACITY),
-    warGateGrievance: new Uint16Array(WAR_CAPACITY),
-    warGateCapacity: new Uint16Array(WAR_CAPACITY),
-    warGateUtility: new Uint16Array(WAR_CAPACITY),
-  };
+  /** settlements × SETTLEMENT_TREND_SAMPLES, capped population, oldest→newest */
+  trendPop: Uint16Array;
+  /** how many of the six slots are valid (0..6) */
+  trendCount: Uint8Array;
 }
 
 export function populationOf(soc: SocietyState, settlement: number): number {
@@ -480,20 +446,3 @@ export function recordDecision(
   if (soc.decisionCount < DECISION_CAPACITY) soc.decisionCount++;
 }
 
-export function appendChronicle(
-  soc: SocietyState,
-  year: number,
-  civ: number,
-  population: number,
-  settlements: number,
-  notableEvents: number,
-): void {
-  const index = soc.chronicleHead;
-  soc.chronicleYear[index] = year;
-  soc.chronicleCiv[index] = civ;
-  soc.chroniclePop[index] = population;
-  soc.chronicleSettlements[index] = settlements;
-  soc.chronicleEvents[index] = notableEvents > 255 ? 255 : notableEvents;
-  soc.chronicleHead = (index + 1) % 4096;
-  if (soc.chronicleCount < 4096) soc.chronicleCount++;
-}

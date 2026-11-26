@@ -25,6 +25,7 @@ import { runConstruction } from '../society/infra.ts';
 import { runMilitary, runWar } from '../society/war.ts';
 import { runDiplomacyYearly } from '../society/diplomacy.ts';
 import { runCivYearly, runResearch, runTechSpread } from '../society/civ.ts';
+import { runYearlyStats } from '../society/stats.ts';
 
 export interface TickContext {
   state: WorldState;
@@ -86,6 +87,8 @@ export function runDay(state: WorldState): void {
   if (ctx.isYearEnd) {
     runDemographics(state);
     runAgeing(state);
+    // sampled after the yearly systems so the series describes the year that just ended
+    runYearlyStats(state);
   }
   syncPopulation(state);
   state.day = day;

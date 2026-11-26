@@ -12,212 +12,24 @@
 import { SimError } from '../../core/errors.ts';
 import type { WorldState } from '../state/worldState.ts';
 import { validateSociety } from './validate.ts';
+import type { Numbers, SocietyDoc } from './codecTypes.ts';
+export { encodeSociety } from './codecEncode.ts';
+import { allocateSociety } from './allocate.ts';
 import { appendVital, VITAL_CAPACITY } from './vital.ts';
 import {
-  allocateSociety,
   COHORT_COUNT,
   CIV_STRIDE,
   DECISION_CAPACITY,
   EVENT_CAPACITY,
+  INTERVENTION_CAPACITY,
   RES_COUNT,
   ROUTE_CAPACITY,
+  SETTLEMENT_TREND_SAMPLES,
+  STATS_CAPACITY,
   TREATY_CAPACITY,
   WAR_CAPACITY,
   type SocietyState,
 } from './state.ts';
-
-type Numbers = number[];
-
-export interface SocietyDoc {
-  v: 2 | 3;
-  cohorts: Numbers;
-  occShare: Numbers;
-  stock: Numbers;
-  cap: Numbers;
-  carry: Numbers;
-  treasury: Numbers;
-  health: Numbers;
-  stability: Numbers;
-  literacy: Numbers;
-  infra: Numbers;
-  flags: Numbers;
-  foundedDay: Numbers;
-  lastDroughtEvent: Numbers;
-  lastFamineEvent: Numbers;
-  price: Numbers;
-  occupier: Numbers;
-  surplusYears: Numbers;
-  lastEpidemicDay: Numbers;
-  historyDay: Numbers;
-  culture: Numbers;
-  tech: Numbers;
-  techProgress: Numbers;
-  legitimacy: Numbers;
-  relation: Numbers;
-  grievance: Numbers;
-  army: Numbers;
-  exhaustion: Numbers;
-  warWins: Numbers;
-  regionDroughtMonths: Numbers;
-  regionPrecip: Numbers;
-  regionTempAnomaly: Numbers;
-  events: { count: number; nextId: number; rows: Numbers };
-  vital?: { count: number; rows: Numbers };
-  decisions: { count: number; rows: Numbers };
-  chronicle: { count: number; rows: Numbers };
-  routes: { count: number; rows: Numbers };
-  treaties: { count: number; rows: Numbers };
-  wars: { count: number; rows: Numbers };
-}
-
-const arr = (src: ArrayLike<number>, n: number): Numbers => Array.from(src).slice(0, n);
-
-/** Encode the live state. Event rows are stored oldest→newest so ids stay monotonic on reload. */
-export function encodeSociety(world: WorldState): SocietyDoc {
-  const s = world.society;
-  const sc = world.settlements.count;
-
-  const rows: Numbers = [];
-  for (let k = 0; k < s.eventCount; k++) {
-    const i = (s.eventHead - s.eventCount + k + EVENT_CAPACITY * 2) % EVENT_CAPACITY;
-    rows.push(
-      s.eventId[i] ?? 0,
-      s.eventDay[i] ?? 0,
-      s.eventType[i] ?? 0,
-      s.eventSeverity[i] ?? 0,
-      s.eventPlace[i] ?? 0,
-      s.eventActorA[i] ?? 0,
-      s.eventActorB[i] ?? 0,
-      s.eventMagnitude[i] ?? 0,
-      s.eventCause[i] ?? 0,
-    );
-  }
-
-  const decisions: Numbers = [];
-  for (let k = 0; k < s.decisionCount; k++) {
-    const i = (s.decisionHead - s.decisionCount + k + DECISION_CAPACITY * 2) % DECISION_CAPACITY;
-    decisions.push(
-      s.decisionDay[i] ?? 0,
-      s.decisionKind[i] ?? 0,
-      s.decisionActor[i] ?? 0,
-      s.decisionChosen[i] ?? 0,
-      s.decisionScore[i] ?? 0,
-    );
-  }
-
-  const chronicle: Numbers = [];
-  for (let k = 0; k < s.chronicleCount; k++) {
-    const i = (s.chronicleHead - s.chronicleCount + k + 8192) % 4096;
-    chronicle.push(
-      s.chronicleYear[i] ?? 0,
-      s.chronicleCiv[i] ?? 0,
-      s.chroniclePop[i] ?? 0,
-      s.chronicleSettlements[i] ?? 0,
-      s.chronicleEvents[i] ?? 0,
-    );
-  }
-
-  const vital: Numbers = [];
-  for (let n = 0; n < s.vital.count; n++) {
-    const i = (s.vital.head - s.vital.count + n + VITAL_CAPACITY * 2) % VITAL_CAPACITY;
-    vital.push(
-      s.vital.id[i] ?? 0,
-      s.vital.day[i] ?? 0,
-      s.vital.type[i] ?? 0,
-      s.vital.severity[i] ?? 0,
-      s.vital.place[i] ?? 0,
-      s.vital.actorA[i] ?? 0,
-      s.vital.actorB[i] ?? 0,
-      s.vital.magnitude[i] ?? 0,
-      s.vital.cause[i] ?? 0,
-    );
-  }
-
-  const routes: Numbers = [];
-  for (let i = 0; i < s.routeCount; i++) {
-    routes.push(
-      s.routeA[i] ?? 0,
-      s.routeB[i] ?? 0,
-      s.routeCapacity[i] ?? 0,
-      s.routeLength[i] ?? 0,
-      s.routeTariff[i] ?? 0,
-      s.routeCreated[i] ?? 0,
-      s.routeVolume[i] ?? 0,
-      s.routeIdle[i] ?? 0,
-    );
-  }
-
-  const treaties: Numbers = [];
-  for (let i = 0; i < s.treatyCount; i++) {
-    treaties.push(
-      s.treatyA[i] ?? 0,
-      s.treatyB[i] ?? 0,
-      s.treatyType[i] ?? 0,
-      s.treatyStart[i] ?? 0,
-      s.treatyEnd[i] ?? 0,
-    );
-  }
-
-  const wars: Numbers = [];
-  for (let i = 0; i < s.warCount; i++) {
-    wars.push(
-      s.warA[i] ?? 0,
-      s.warB[i] ?? 0,
-      s.warStart[i] ?? 0,
-      s.warScore[i] ?? 0,
-      s.warExhaustA[i] ?? 0,
-      s.warExhaustB[i] ?? 0,
-      s.warBattles[i] ?? 0,
-      s.warCause[i] ?? 0,
-      s.warGateStrength[i] ?? 0,
-      s.warGateGrievance[i] ?? 0,
-      s.warGateCapacity[i] ?? 0,
-      s.warGateUtility[i] ?? 0,
-    );
-  }
-
-  return {
-    v: 3,
-    cohorts: arr(s.cohorts, sc * COHORT_COUNT),
-    occShare: arr(s.occShare, sc * 5),
-    stock: arr(s.stock, sc * RES_COUNT),
-    cap: arr(s.cap, sc * RES_COUNT),
-    carry: arr(s.carry, sc * RES_COUNT),
-    treasury: arr(s.treasury, sc),
-    health: arr(s.health, sc),
-    stability: arr(s.stability, sc),
-    literacy: arr(s.literacy, sc),
-    infra: arr(s.infra, sc),
-    flags: arr(s.flags, sc),
-    foundedDay: arr(s.foundedDay, sc),
-    lastDroughtEvent: arr(s.lastDroughtEvent, sc),
-    lastFamineEvent: arr(s.lastFamineEvent, sc),
-    price: arr(s.price, sc * RES_COUNT),
-    occupier: arr(s.occupier, sc),
-    surplusYears: arr(s.surplusYears, sc),
-    lastEpidemicDay: arr(s.lastEpidemicDay, sc),
-    historyDay: arr(s.historyDay, sc * 3),
-    culture: arr(s.culture, CIV_STRIDE * 3),
-    tech: arr(s.tech, CIV_STRIDE * 12),
-    techProgress: arr(s.techProgress, CIV_STRIDE * 12),
-    legitimacy: arr(s.legitimacy, CIV_STRIDE),
-    relation: arr(s.relation, CIV_STRIDE * CIV_STRIDE),
-    grievance: arr(s.grievance, CIV_STRIDE * CIV_STRIDE),
-    army: arr(s.army, CIV_STRIDE),
-    exhaustion: arr(s.exhaustion, CIV_STRIDE),
-    warWins: arr(s.warWins, CIV_STRIDE),
-    regionDroughtMonths: arr(s.regionDroughtMonths, 16),
-    regionPrecip: arr(s.regionPrecip, 16),
-    regionTempAnomaly: arr(s.regionTempAnomaly, 16),
-    events: { count: s.eventCount, nextId: s.nextEventId, rows },
-    vital: { count: s.vital.count, rows: vital },
-    decisions: { count: s.decisionCount, rows: decisions },
-    chronicle: { count: s.chronicleCount, rows: chronicle },
-    routes: { count: s.routeCount, rows: routes },
-    treaties: { count: s.treatyCount, rows: treaties },
-    wars: { count: s.warCount, rows: wars },
-  };
-}
 
 function expectArray(value: unknown, label: string, expected: number): Numbers {
   if (!Array.isArray(value)) throw new SimError('SAVE_CORRUPT', `society.${label} is not an array`);
@@ -303,8 +115,11 @@ function optionalRows(value: unknown, label: string, stride: number, cap: number
 export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   if (!doc || typeof doc !== 'object') throw new SimError('SAVE_CORRUPT', 'society block missing');
   const d = doc as SocietyDoc;
-  if (d.v !== 2 && d.v !== 3) throw new SimError('UNSUPPORTED_VERSION', `society block version ${String(d.v)}`);
+  if (d.v !== 2 && d.v !== 3 && d.v !== 4) {
+    throw new SimError('UNSUPPORTED_VERSION', `society block version ${String(d.v)}`);
+  }
   const legacy = d.v === 2;
+  const stage4 = d.v === 4;
 
   const sc = world.settlements.count;
   const cc = world.civs.count;
@@ -475,6 +290,62 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
     s.warGateCapacity[k] = wars[o + 10] ?? 0;
     s.warGateUtility[k] = wars[o + 11] ?? 0;
   }
+
+  // --- schema 4: player interventions and the yearly series
+  if (stage4) {
+    const iv = d.interventions;
+    if (!iv || typeof iv.count !== 'number') throw new SimError('SAVE_CORRUPT', 'society.interventions is missing');
+    const last = expectArray(iv.last, 'interventions.last', 4);
+    for (let k = 0; k < 4; k++) s.interventionLastDay[k] = last[k] ?? 0;
+    const rows = expectRows(iv.rows, 'interventions.rows', 8, INTERVENTION_CAPACITY);
+    s.interventionCount = Math.min(INTERVENTION_CAPACITY, iv.count);
+    if (rows.length < s.interventionCount * 8) {
+      throw new SimError('SAVE_CORRUPT', 'society.interventions rows shorter than count');
+    }
+    for (let k = 0; k < s.interventionCount; k++) {
+      const o = k * 8;
+      s.interventionKind[k] = rows[o] ?? 0;
+      s.interventionA[k] = rows[o + 1] ?? 0;
+      s.interventionB[k] = rows[o + 2] ?? 0;
+      s.interventionStart[k] = rows[o + 3] ?? 0;
+      s.interventionEnd[k] = rows[o + 4] ?? 0;
+      s.interventionIntensity[k] = rows[o + 5] ?? 0;
+      s.interventionResource[k] = rows[o + 6] ?? 255;
+      s.interventionAmount[k] = rows[o + 7] ?? 0;
+    }
+    s.interventionHead = s.interventionCount % INTERVENTION_CAPACITY;
+
+    const stats = d.stats;
+    if (!stats || typeof stats.count !== 'number') throw new SimError('SAVE_CORRUPT', 'society.stats is missing');
+    const stRows = expectRows(stats.rows, 'stats.rows', 10, STATS_CAPACITY);
+    s.statsCount = Math.min(STATS_CAPACITY, stats.count);
+    if (stRows.length < s.statsCount * 10) throw new SimError('SAVE_CORRUPT', 'society.stats rows shorter than count');
+    for (let k = 0; k < s.statsCount; k++) {
+      const o = k * 10;
+      s.statsYear[k] = stRows[o] ?? 0;
+      s.statsPopulation[k] = stRows[o + 1] ?? 0;
+      s.statsSettlements[k] = stRows[o + 2] ?? 0;
+      s.statsCivs[k] = stRows[o + 3] ?? 0;
+      s.statsFoodProduced[k] = stRows[o + 4] ?? 0;
+      s.statsTradeVolume[k] = stRows[o + 5] ?? 0;
+      s.statsTreasury[k] = stRows[o + 6] ?? 0;
+      s.statsWars[k] = stRows[o + 7] ?? 0;
+      s.statsFertility[k] = stRows[o + 8] ?? 0;
+      s.statsDrought[k] = stRows[o + 9] ?? 0;
+    }
+    s.statsHead = s.statsCount % STATS_CAPACITY;
+
+    const trend = d.trend;
+    if (!trend) throw new SimError('SAVE_CORRUPT', 'society.trend is missing');
+    copy(s.trendCount, expectArray(trend.counts, 'trend.counts', sc));
+    copy(s.trendPop, expectArray(trend.values, 'trend.values', sc * SETTLEMENT_TREND_SAMPLES));
+    for (let i = 0; i < sc; i++) {
+      if ((s.trendCount[i] ?? 0) > SETTLEMENT_TREND_SAMPLES) {
+        throw new SimError('SAVE_CORRUPT', `settlement ${i} trend count is ${s.trendCount[i]}`);
+      }
+    }
+  }
+  // a schema-2/3 world predates interventions; its rings stay empty, which is the truth about it
 
   // semantics, not just shapes: reject an impossible world instead of coercing it
   validateSociety(world, s);

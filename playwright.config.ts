@@ -11,7 +11,7 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: 'http://127.0.0.1:4174',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     viewport: { width: 390, height: 844 },
@@ -36,8 +36,8 @@ export default defineConfig({
   webServer: {
     // A plain static server instead of `vite preview`: predictable in CI, no config reads, and it
     // fails loudly if `dist` was not built.
-    command: 'node scripts/serve-dist.mjs 4173',
-    url: 'http://127.0.0.1:4173',
+    command: 'node scripts/serve-dist.mjs 4174',
+    url: 'http://127.0.0.1:4174',
     reuseExistingServer: false,
     timeout: 60_000,
     stdout: 'pipe',

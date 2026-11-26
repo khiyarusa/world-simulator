@@ -22,6 +22,7 @@ import { FLAG_DROUGHT, isAlive, removePeople } from './common.ts';
 import { withStream } from './streams.ts';
 import { retainEvent } from './vital.ts';
 import { damageInfrastructure } from './infra.ts';
+import { runInterventionEffects } from './interventions.ts';
 
 /** Most a tile can recover to, given its moisture (vegetation is a 0..255 index). */
 function vegetationTarget(moisture: number): number {
@@ -41,6 +42,10 @@ export function runEcology(world: WorldState, day: number): void {
   const soc = world.society;
   const s = world.settlements;
   const grids = world.grids;
+
+  // Stage 4: lingering player effects are real ecological pressures and are applied before the
+  // ordinary monthly pass, so a blight reduces this month's vegetation target like any drought.
+  runInterventionEffects(world, day);
 
   for (let i = 0; i < s.count; i++) {
     if (!isAlive(world, i)) continue;
