@@ -269,16 +269,20 @@ export function runDemographics(world: WorldState): void {
     const starving = ((soc.flags[i] ?? 0) & FLAG_STARVING) !== 0;
     const densityPm = pop > 5000 ? 300 : pop > 500 ? 150 : 100;
 
-    // births: 3.2 %/yr scaled by health, and halved while starving
+    // births: 3.2 %/yr scaled by health AND by the food reserve. Fertility falling before reserves run
+    // out is what turns a hard overshoot into a soft landing (the balance harness showed the overshoot).
+    const reserveDays = Math.floor(stockOf(soc, i, RES.FOOD) / Math.max(1, pop));
+    const reservePm = Math.min(1000, Math.max(300, reserveDays * 15));
     let birthPm = mulDiv(RULE.baseBirthPm, Math.max(0, 60 + health), 100);
-    if (starving) birthPm = mulDiv(birthPm, 500, 1000);
+    birthPm = mulDiv(birthPm, reservePm, 1000);
+    if (starving) birthPm = mulDiv(birthPm, 400, 1000);
     const births = Math.floor((pop * birthPm) / 1000 / months);
     addCohort(soc, i, COHORT.CHILDREN, births);
 
     // deaths: 1.4 %/yr, plus starvation and epidemic pressure (Stage 3 models starvation only)
     let deathPm = mulDiv(RULE.baseDeathPm, densityPm, 100);
-    if (starving) deathPm += 120;
-    if (health < 30) deathPm += 30;
+    if (starving) deathPm += 40;
+    if (health < 30) deathPm += 20;
     const deaths = Math.floor((pop * deathPm) / 1000 / months);
 
     // natural deaths are taken from elders first, then adults, then children — conservation-safe
@@ -295,7 +299,7 @@ export function runDemographics(world: WorldState): void {
     // starvation kills the unmet person-days directly, and those deaths are counted too
     let starved = 0;
     if (starving) {
-      const extra = Math.max(0, Math.floor(pop / 400));
+      const extra = Math.max(0, Math.floor(pop / 1200));
       let left = extra;
       for (const cohort of order) {
         if (left <= 0) break;
