@@ -10,6 +10,8 @@ import { worldChecksum } from '../src/sim/state/checksum.ts';
 import { totalPopulation } from '../src/sim/society/living.ts';
 import { populationOf } from '../src/sim/society/state.ts';
 import { seedOf } from '../src/core/seed.ts';
+import { captureWorld } from '../src/worker/snapshot.ts';
+import { encodeSnapshot } from '../src/worker/serialize.ts';
 import { EVENT_TYPE_NAMES } from '../src/sim/society/state.ts';
 import type { Preset, WorldState } from '../src/sim/state/worldState.ts';
 
@@ -37,6 +39,9 @@ export interface SeedReport {
   tickMax: number;
   invariantFailures: string[];
   checksum: string;
+  /** S3-A7 evidence: a real save of this world at year 200. */
+  saveBytesRaw: number;
+  saveMs: number;
 }
 
 export interface BalanceReport {
@@ -83,7 +88,7 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
 }
 
-export function runBalance(options: BalanceOptions): BalanceReport {
+export async function runBalance(options: BalanceOptions): Promise<BalanceReport> {
   const startedAt = performance.now();
   const detail: SeedReport[] = [];
 
@@ -103,6 +108,8 @@ export function runBalance(options: BalanceOptions): BalanceReport {
     const samples: number[] = [];
     const startEvents = state.society.eventCount;
     const days = options.years * 360;
+    let saveBytesRaw = 0;
+    let saveMs = 0;
 
     for (let d = 0; d < days; d++) {
       const t0 = performance.now();
@@ -110,6 +117,12 @@ export function runBalance(options: BalanceOptions): BalanceReport {
       samples.push(performance.now() - t0);
       if (d % 360 === 0) audit(state, failures);
       if (failures.length > 0) break;
+      if (d === 200 * 360) {
+        const t1 = performance.now();
+        const shards = await encodeSnapshot(captureWorld(state));
+        saveMs = Math.round((performance.now() - t1) * 100) / 100;
+        saveBytesRaw = shards.reduce((n, s) => n + s.bytes, 0);
+      }
     }
 
     samples.sort((a, b) => a - b);
@@ -147,6 +160,8 @@ export function runBalance(options: BalanceOptions): BalanceReport {
       tickMax: round(samples[samples.length - 1] ?? 0),
       invariantFailures: failures,
       checksum: worldChecksum(state).toString(16),
+      saveBytesRaw,
+      saveMs,
     };
     detail.push(report);
     options.onSeed?.(report);

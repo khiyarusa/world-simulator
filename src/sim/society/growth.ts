@@ -70,8 +70,8 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
   soc.flags[index] = 0;
   s.count = index + 1;
 
-  // move ~30 % of the parent, youngest cohorts first so the daughter can grow
-  const target = Math.min(200, Math.floor(populationOf(soc, parent) * 300 / 1000));
+  // move 40 % of the parent (capped), youngest cohorts first so the daughter can grow
+  const target = Math.min(260, Math.floor(populationOf(soc, parent) * 400 / 1000));
   let left = target;
   for (const c of [COHORT.YOUTH, COHORT.CHILDREN, COHORT.FARMERS, COHORT.EXTRACTORS, COHORT.CRAFTERS]) {
     if (left <= 0) break;
@@ -88,7 +88,8 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
     return;
   }
   // seed the daughter from the parent's stores (a transfer, so the world total is unchanged)
-  const food = Math.min(stockOf(soc, parent, RES.FOOD), moved * 20);
+  // a daughter needs a working reserve, otherwise reserve-aware fertility freezes it at birth
+  const food = Math.min(stockOf(soc, parent, RES.FOOD), moved * 90);
   addStock(soc, parent, RES.FOOD, -food);
   addStock(soc, index, RES.FOOD, food);
   world.counters.settlementsFounded += 1;
@@ -116,7 +117,7 @@ export function runGrowth(world: WorldState, day: number): void {
 
     // --- founding: prosperity plus room founds a daughter settlement (transfer, not creation)
     if (
-      pop >= 250 &&
+      pop >= 220 &&
       (soc.stability[i] ?? 0) >= 55 &&
       stockOf(soc, i, RES.FOOD) > pop * 20 &&
       s.count < CAPACITY.settlements &&

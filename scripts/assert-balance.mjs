@@ -17,7 +17,8 @@ for (const s of report.seedsDetail) {
   console.log(
     `  seed ${s.seed}: pop ${s.initialPopulation} -> ${s.finalPopulation}  settlers ${s.livingSettlements}/${s.settlements}  ` +
       `births ${s.births} deaths ${s.deaths} abandon ${s.abandonments}  food ${s.foodPerCapitaDays}d  ` +
-      `events ${s.eventCount}  tick p95 ${s.tickP95}ms  ${s.invariantFailures.length ? 'FAIL' : 'ok'}`,
+      `events ${s.eventCount}  save ${(s.saveBytesRaw / 1048576).toFixed(3)}MB/${s.saveMs}ms  ` +
+      `tick p95 ${s.tickP95}ms  ${s.invariantFailures.length ? 'FAIL' : 'ok'}`,
   );
   for (const f of s.invariantFailures.slice(0, 5)) console.log(`    ! ${f}`);
 }
