@@ -7,6 +7,7 @@
  */
 import type { WorldState } from '../state/worldState.ts';
 import { DAYS_PER_MONTH, DAYS_PER_YEAR } from '../../core/clock.ts';
+import { runGrowth } from '../society/growth.ts';
 import {
   syncPopulation,
   runAgeing,
@@ -14,7 +15,6 @@ import {
   runClimate,
   runConsumption,
   runDemographics,
-  runGrowth,
   runMigration,
   runProduction,
 } from '../society/living.ts';
