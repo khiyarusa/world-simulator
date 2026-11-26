@@ -105,7 +105,7 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     if (cause !== 0 && cause !== -1) {
       // a cause older than the retention floor was evicted by the documented ring budget, not lost
       if (!allIds.has(cause) && cause >= retentionFloor) {
-        fail(`event ${id} references a cause that does not exist (${cause})`);
+        fail(`event ${id} (type ${s.eventType[k] ?? 0}) references a cause that does not exist (${cause})`);
       }
       if (cause >= id) fail(`event ${id} references a later cause (${cause})`);
     }
