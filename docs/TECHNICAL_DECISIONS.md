@@ -545,3 +545,102 @@ names the invariant it protects, because the next agent will be tempted to "simp
   suppresses the tap path for the whole gesture.
 - **Why:** pinch with little travel ended in a click that selected an arbitrary settlement.
 - **Trade-off:** a deliberate two-finger tap does nothing. Acceptable: nothing in the UI requires it.
+
+### D-41 — Full settlement fidelity at the Stage 3 cap; the camera cannot reach a rule
+
+- **Decision:** all 200 settlements run the complete pipeline every tick. Detail tiers are derived
+  metadata for rendering only and are never persisted. `tests/determinism/lod.test.ts` runs the same
+  seed twice, moving and zooming a `Camera` on one copy every three days, and requires an identical
+  checksum, population and event stream.
+- **Why:** the hard product invariant is "moving the camera never changes history". Any aggregation that
+  changed cadence with the view would make history depend on where the player looked.
+- **Trade-off:** no cadence saving at the cap. Measured p95 is 0.03–0.11 ms per tick at 200 settlements
+  on the CI runner, far inside the 3 ms budget; cadence-LOD remains deferred with a measured trigger.
+
+### D-42 — Cohorts are the only authoritative population
+
+- **Decision:** `Σ cohorts` is the population. `settlements.pop` is written once per tick by
+  `syncPopulation()` as a projection, and every mirror/query/save-metadata consumer reads the projection,
+  while simulation rules read the cohorts directly. `auditSociety()` asserts both agree every month.
+- **Why:** two writable representations diverged: the map showed a population the rules had not changed.
+- **Trade-off:** one full pass over settlements per tick (200 × 8 adds) to keep the legacy array honest.
+
+### D-43 — Founding transfers people and stores; it never creates them
+
+- **Decision:** a daughter settlement receives 35 % of the parent's adults (cap 350) and the same share
+  of its food, cohort-by-cohort and unit-by-unit. `Σ population` is unchanged by founding.
+- **Why:** population creation by founding would break the conservation identity and the audit.
+- **Trade-off:** a settlement cannot found while it is starving; the safety valve requires 10 days of
+  reserve, so collapse happens before fragmentation in a true famine.
+
+### D-44 — The society block lives inside the `meta` shard
+
+- **Decision:** the four-shard set (`meta`, `terrain`, `settlements`, `civs`) is unchanged; the society
+  JSON travels inside `meta`. `SHARD_NAMES` does not gain a `society` shard.
+- **Why:** the Stage 2.1 completeness/recovery rules and every historical v1/v2 save remain valid, and a
+  fifth shard would have required a version-aware manifest for no measured benefit.
+- **Trade-off:** the meta shard is large (≈1 MB raw at year 200) and is compressed as a unit; that is
+  within the S3-A7 budget and measured by the harness.
+
+### D-45 — Schema v3, with a real 2→3 migration
+
+- **Decision:** `SAVE_SCHEMA_VERSION = 3`. The codec (`v: 3`) adds routes, treaties, wars, military,
+  prices, research progress, occupation/immunity markers, the vital ring and per-settlement history days.
+  A v2 block decodes by expanding its used-civ-corner matrices into the fixed 12-civ stride and filling
+  the new structures as empty; a v3 block missing any structure is `SAVE_CORRUPT`.
+- **Why:** the complete Stage 3 state must survive a reload; silently defaulting a missing v3 structure
+  is indistinguishable from loading a different world.
+- **Trade-off:** v2 and v3 both need tests. `tests/society/systems.test.ts` builds a genuine v2 payload
+  from the current encoder and proves the expansion, and rejects a v3 block with a deleted field.
+
+### D-46 — Vital-event ring and the retention contract
+
+- **Decision:** the main ring holds 16,000 events; a second ring holds 4,096 severity-4/5 events with the
+  same stable ids. A notable event cited as a cause (a drought) is copied into the vital ring at citation
+  time. Retention contract: the complete authoritative history is the event stream; a save preserves the
+  most recent 16,000 events plus 4,096 severe events and their cited causes. The year-200 raw save stays
+  under 1.2 MB with this budget (measured).
+- **Why:** the main ring wraps within a 400-year run. Without a second ring, a war declaration's cause was
+  evicted before the peace that cites it, and `causeId` 0 proved nothing.
+- **Trade-off:** severe history older than the vital window is not preserved. The harness measures cause
+  integrity over every event it observed, not only the retained tail.
+
+### D-47 — The war gate uses a 30-day campaign reserve
+
+- **Decision:** all four GDD conditions are enforced and persisted with every declaration: relative
+  strength ≥ 1.25, grievance score ≥ 40, capacity (≥30 days of food, army ≥20, no active war, exhaustion
+  <50), and a `declare_war` utility margin ≥50/1000. The 30-day figure is the operational interpretation
+  of "surplus food for one year": the implemented economy stores 60 days at base and 105 with a granary,
+  so a literal 360-day condition would make the gate unreachable. The strength/grievance/utility values
+  are unchanged.
+- **Why:** a gate that cannot pass is not a gate, and a gate weakened silently is worse. The threshold and
+  its reason are recorded here and in the design doc; every declaration persists all four values.
+- **Trade-off:** wars are rarer than a game-first design would choose. The harness sampled 23 real wars
+  across 20 seeds, all reproducing the four values.
+
+### D-48 — Founding is caused by arable crowding; land capacity has one owner
+
+- **Decision:** `economy.landCapacity()` (`220 + 20 × fertility`) is used by both agriculture and the
+  founding decision. A settlement founds when population reaches 70 % of that capacity, stability ≥45,
+  food ≥10 days and a valid site exists.
+- **Why:** a fixed population threshold either never fired (900, when the settlement starved first) or
+  fired at a size unrelated to the land. Crowding is the mechanism the world actually has.
+- **Trade-off:** settlements on poor land split early and stay small; that is the intended geography.
+
+### D-49 — Treasury has one faucet and no free money
+
+- **Decision:** the only coin faucet is the monthly head levy on real production
+  (`pop × (600 + 4×stability)/1000`). Trade moves coin from buyer to seller, tribute moves it between
+  treasuries, and construction/military upkeep destroy it. No flow creates coin without a source.
+- **Why:** an inert treasury is a dead system; a treasury that grows by itself invalidates the economy.
+- **Trade-off:** coin is an abstract claim on production, not a stored good; the report tracks collected
+  tax, transfers and construction spending separately.
+
+### D-50 — Measured performance keeps full fidelity affordable
+
+- **Decision:** no ECS, no aggregation by camera, no extra runtime dependency. The measured 200-settlement
+  full pipeline at steady 1× is p95 0.03–0.11 ms per day on the CI runner (budget 3 ms), with a year-200
+  raw save of 0.9–1.2 MB and 59–124 ms encode. The two quadratic hotspots the harness found (route-pair
+  scans and per-civ-pair border scans) were replaced with one bitmap and one settlement pass.
+- **Why:** measure first; the initial full-system run was 6 minutes per pass because of those two loops.
+- **Trade-off:** the harness itself is a CI job of several minutes; it is the price of evidence.

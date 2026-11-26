@@ -36,7 +36,7 @@ export const RULE = {
   fuelPerPerson: 150,
   baseBirthPm: 34, // 3.4 %/year
   baseDeathPm: 12,
-  spoilagePm: 1, // per day
+  spoilagePer10k: 3, // 0.3 per-mille per day (~10 %/year); 1 per-mille lost 30 %/year
   starvationDeathPm: 900, // of unmet person-days
   migrationMaxPm: 20, // 2 % of population per month
   tierVillage: 60,
@@ -203,9 +203,9 @@ export function runConsumption(world: WorldState, day: number): void {
     if (!isAlive(world, i)) continue;
     const pop = populationOf(soc, i);
 
-    // spoilage first: 2‰/day, always at least 1 unit when there is food to lose
+    // spoilage first: 0.3 per-mille/day, always at least 1 unit when there is food to lose
     const food = stockOf(soc, i, RES.FOOD);
-    const spoil = Math.max(food > 0 ? 1 : 0, Math.floor((food * RULE.spoilagePm) / 1000));
+    const spoil = Math.max(food > 0 ? 1 : 0, Math.floor((food * RULE.spoilagePer10k) / 10_000));
     if (spoil > 0) addStock(soc, i, RES.FOOD, -spoil);
 
     const needFood = Math.ceil((pop * RULE.foodPerPerson) / 1000);
@@ -425,7 +425,12 @@ export function runMigration(world: WorldState, day: number): void {
     const moved = movers - left;
     if (moved > 0) {
       world.counters.migrants += moved;
-      appendEvent(world.society, day, EVENT_TYPE.MIGRATION_WAVE, SEVERITY.NOTABLE, from, s.civ[from] ?? 0, s.civ[best] ?? 0, moved, soc.lastDroughtEvent[from] ?? 0);
+      // a migration wave cites a fresh drought when there is one, otherwise it is an explicit root
+      const drought = soc.lastDroughtEvent[from] ?? 0;
+      const fresh = day - (soc.historyDay[from * 3] ?? 0) <= 720;
+      const cause = drought > 0 && fresh ? drought : -1;
+      if (cause > 0) retainEvent(soc, cause);
+      appendEvent(world.society, day, EVENT_TYPE.MIGRATION_WAVE, SEVERITY.NOTABLE, from, s.civ[from] ?? 0, s.civ[best] ?? 0, moved, cause);
     }
   }
 }
