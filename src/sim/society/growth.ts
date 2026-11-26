@@ -45,11 +45,30 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
   const soc = world.society;
   const px = s.x[parent] ?? 0;
   const py = s.y[parent] ?? 0;
+  // A local occupancy mask: founding is called for every prosperous settlement, and a per-candidate
+  // scan of all settlements turned the 400-year harness quadratic. The mask is conservative (it
+  // marks the 5x5 box around each neighbour, slightly more than the real 3-tile radius).
+  const SPAN = 15;
+  const HALF = 7;
+  const occupiedMask = new Uint8Array(SPAN * SPAN);
+  for (let k = 0; k < s.count; k++) {
+    const ddx = (s.x[k] ?? 0) - px;
+    const ddy = (s.y[k] ?? 0) - py;
+    if (ddx < -HALF - 3 || ddx > HALF + 3 || ddy < -HALF - 3 || ddy > HALF + 3) continue;
+    for (let my = ddy - 2; my <= ddy + 2; my++) {
+      if (my < -HALF || my > HALF) continue;
+      for (let mx = ddx - 2; mx <= ddx + 2; mx++) {
+        if (mx < -HALF || mx > HALF) continue;
+        occupiedMask[(my + HALF) * SPAN + (mx + HALF)] = 1;
+      }
+    }
+  }
   let site = -1;
   for (let r = 2; r <= 7 && site < 0; r++) {
     for (let dy = -r; dy <= r && site < 0; dy++) {
       for (let dx = -r; dx <= r && site < 0; dx++) {
         if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // ring only
+        if (occupiedMask[(dy + HALF) * SPAN + (dx + HALF)] !== 0) continue;
         const x = px + dx;
         const y = py + dy;
         if (x < 1 || y < 1 || x >= world.width - 1 || y >= world.height - 1) continue;
@@ -57,13 +76,6 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
         if ((world.grids.elevation[tile] ?? 0) < world.seaLevel) continue;
         if ((world.grids.lakeId[tile] ?? 0) !== 0) continue;
         if ((world.grids.fertility[tile] ?? 0) < 25) continue;
-        let occupied = false;
-        for (let k = 0; k < s.count; k++) {
-          const ddx = (s.x[k] ?? 0) - x;
-          const ddy = (s.y[k] ?? 0) - y;
-          if (ddx * ddx + ddy * ddy < 9) occupied = true;
-        }
-        if (occupied) continue;
         site = tile;
       }
     }
@@ -88,6 +100,12 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
   soc.occupier[index] = 0;
   soc.surplusYears[index] = 0;
   for (let r = 0; r < RES_COUNT; r++) soc.price[index * RES_COUNT + r] = 1000;
+  // the same adult split the generator uses, so the settlement is valid from its first tick
+  soc.occShare[index * 5] = 500;
+  soc.occShare[index * 5 + 1] = 200;
+  soc.occShare[index * 5 + 2] = 120;
+  soc.occShare[index * 5 + 3] = 100;
+  soc.occShare[index * 5 + 4] = 80;
   s.count = index + 1;
 
   // move 40 % of the parent (capped), youngest cohorts first so the daughter can grow
@@ -109,7 +127,7 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
   }
   recalcCaps(world);
   // seed the daughter from the parent's stores (a transfer, so the world total is unchanged)
-  const food = Math.min(stockOf(soc, parent, RES.FOOD), moved * 90);
+  const food = Math.min(stockOf(soc, parent, RES.FOOD), moved * 55); // fits the no-granary cap
   addStock(soc, parent, RES.FOOD, -food);
   addStock(soc, index, RES.FOOD, food);
   world.counters.settlementsFounded += 1;

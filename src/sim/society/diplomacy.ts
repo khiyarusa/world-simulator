@@ -36,7 +36,8 @@ function removeTreaty(world: WorldState, index: number, day: number, broken: boo
   const a = soc.treatyA[index] ?? 0;
   const b = soc.treatyB[index] ?? 0;
   const type = soc.treatyType[index] ?? 0;
-  appendEvent(soc, day, EVENT_TYPE.TREATY_BROKEN, SEVERITY.LOCAL, world.civs.capital[a] ?? 0, a, b, broken ? 1 : 0, ROOT_CAUSE);
+  // magnitude encodes type and cause of ending: type*10 + 1 when broken, type*10 when expired
+  appendEvent(soc, day, EVENT_TYPE.TREATY_BROKEN, SEVERITY.LOCAL, world.civs.capital[a] ?? 0, a, b, type * 10 + (broken ? 1 : 0), ROOT_CAUSE);
   if (broken) {
     adjustRelation(soc, a, b, -20);
     soc.legitimacy[a] = Math.max(0, (soc.legitimacy[a] ?? 50) - 6);
@@ -75,7 +76,7 @@ export function treatyBetween(soc: WorldState['society'], a: number, b: number, 
 }
 
 /** Yearly relation and grievance update from named drivers. */
-export function updateRelations(world: WorldState, day: number): void {
+export function updateRelations(world: WorldState): void {
   const soc = world.society;
   const s = world.settlements;
   const n = world.civs.count;
@@ -224,7 +225,7 @@ export function proposeTreaties(world: WorldState, day: number): void {
 export function runDiplomacyYearly(world: WorldState, day: number): void {
   if (day % DAYS_PER_YEAR !== 0) return;
   const soc = world.society;
-  updateRelations(world, day);
+  updateRelations(world);
   proposeTreaties(world, day);
   for (let k = soc.treatyCount - 1; k >= 0; k--) {
     if (day >= (soc.treatyEnd[k] ?? 0)) {

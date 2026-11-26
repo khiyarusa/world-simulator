@@ -320,16 +320,15 @@ function endWar(world: WorldState, index: number, day: number, score: number, mu
     soc.warWins[winner] = (soc.warWins[winner] ?? 0) + 1;
     if (mutual) {
       // a drawn war cedes nothing; occupied settlements return to their owner
-      for (let i = 0; i < s.count; i++) if ((soc.occupier[i] ?? 0) === winner + 1) soc.occupier[i] = 0;
+      for (let i = 0; i < s.count; i++) {
+        if ((soc.occupier[i] ?? 0) === a + 1 || (soc.occupier[i] ?? 0) === b + 1) soc.occupier[i] = 0;
+      }
     } else {
       for (let i = 0; i < s.count; i++) {
-        if ((soc.occupier[i] ?? 0) !== winner + 1) continue;
-        if (score >= 60) {
-          s.civ[i] = winner;
-          soc.occupier[i] = 0;
-        } else {
-          soc.occupier[i] = 0;
-        }
+        const occupier = soc.occupier[i] ?? 0;
+        if (occupier !== a + 1 && occupier !== b + 1) continue;
+        if (occupier === winner + 1 && score >= 60) s.civ[i] = winner;
+        soc.occupier[i] = 0;
       }
     }
     // refugees: 3 % of the loser's people near the front move to the winner's capital

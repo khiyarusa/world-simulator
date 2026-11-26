@@ -47,7 +47,7 @@ export interface ArcResult {
 
 const YEAR = 360;
 
-function yearIndex(trace: ArcTrace, day: number): number {
+function yearIndex(day: number): number {
   return Math.floor((day - 1) / YEAR);
 }
 
@@ -82,7 +82,7 @@ function boomCollapse(trace: ArcTrace): ArcResult {
   }
   const droughtBeforeTrough = trace.events.some((e) => {
     if (e.type !== 'drought') return false;
-    const y = yearIndex(trace, e.day);
+    const y = yearIndex(e.day);
     return y >= peak && y <= trough;
   });
   return {
@@ -96,12 +96,12 @@ function boomCollapse(trace: ArcTrace): ArcResult {
 function warTradeDecline(trace: ArcTrace): ArcResult {
   const wars = trace.events.filter((e) => e.type === 'war_declared');
   for (const war of wars) {
-    const startYear = yearIndex(trace, war.day);
+    const startYear = yearIndex(war.day);
     const a = war.actorA;
     const b = war.actorB;
     const lost = trace.events.some((e) => {
       if (e.type !== 'route_lost') return false;
-      const y = yearIndex(trace, e.day);
+      const y = yearIndex(e.day);
       const touches = e.actorA === a || e.actorA === b || e.actorB === a || e.actorB === b;
       return touches && y >= startYear && y <= startYear + 20;
     });
@@ -154,7 +154,7 @@ function tradeDivergence(trace: ArcTrace): ArcResult {
 /** 4. The harness blight causes refugees and a measurable decline in the affected civilization. */
 function blightArc(trace: ArcTrace): ArcResult {
   if (trace.blightDay <= 0) return { type: 'blight_refugees', present: false, evidence: 'no intervention' };
-  const blightYear = yearIndex(trace, trace.blightDay);
+  const blightYear = yearIndex(trace.blightDay);
   const start = trace.years[blightYear];
   const after = trace.years[Math.min(trace.years.length - 1, blightYear + 10)];
   if (!start || !after) return { type: 'blight_refugees', present: false, evidence: 'trace too short' };
@@ -162,7 +162,7 @@ function blightArc(trace: ArcTrace): ArcResult {
   const afterPop = after.civPopulation[trace.blightCiv] ?? 0;
   const refugees = trace.events.some((e) => {
     if (e.type !== 'migration_wave') return false;
-    const y = yearIndex(trace, e.day);
+    const y = yearIndex(e.day);
     return y >= blightYear && y <= blightYear + 5;
   });
   return {

@@ -190,7 +190,6 @@ function collectEvents(world: WorldState, lastId: number, out: ArcEvent[]): numb
 }
 
 function sampleYear(world: WorldState, year: number, routes: number): ArcYear {
-  const civs = world.civs.count;
   const civPopulation = new Array<number>(CIV_STRIDE).fill(0);
   const civRoutes = new Array<number>(CIV_STRIDE).fill(0);
   const s = world.settlements;
@@ -280,6 +279,7 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
     if (d % 30 === 0) {
       const audit = auditSociety(state, {
         expectedPopulation: initialPopulation + state.counters.births - state.counters.deaths,
+        full: d % 360 === 0,
       });
       for (const failure of audit) if (failures.length < 40) failures.push(`day ${d}: ${failure}`);
     }

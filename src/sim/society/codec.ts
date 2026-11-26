@@ -72,7 +72,6 @@ const arr = (src: ArrayLike<number>, n: number): Numbers => Array.from(src).slic
 export function encodeSociety(world: WorldState): SocietyDoc {
   const s = world.society;
   const sc = world.settlements.count;
-  const cc = world.civs.count;
 
   const rows: Numbers = [];
   for (let k = 0; k < s.eventCount; k++) {
@@ -211,9 +210,12 @@ function expectArray(value: unknown, label: string, expected: number): Numbers {
   return value as Numbers;
 }
 
-/** Schema-2 blocks lack the newer arrays; their absence has one legal meaning (empty), not "any". */
-function optionalArray(value: unknown, label: string, expected: number, fill: number): Numbers {
-  if (value === undefined) return new Array<number>(expected).fill(fill);
+/** Schema-2 blocks lack the newer arrays; in schema 3 their absence is corruption, not "empty". */
+function optionalArray(value: unknown, label: string, expected: number, legacy: boolean, fill: number): Numbers {
+  if (value === undefined) {
+    if (!legacy) throw new SimError('SAVE_CORRUPT', `society.${label} is missing`);
+    return new Array<number>(expected).fill(fill);
+  }
   return expectArray(value, label, expected);
 }
 
@@ -259,8 +261,11 @@ function civMatrix(value: unknown, label: string, civs: number, legacy: boolean)
   return out;
 }
 
-function optionalRows(value: unknown, label: string, stride: number, cap: number): Numbers {
-  if (value === undefined) return [];
+function optionalRows(value: unknown, label: string, stride: number, cap: number, legacy: boolean): Numbers {
+  if (value === undefined) {
+    if (!legacy) throw new SimError('SAVE_CORRUPT', `society.${label} is missing`);
+    return [];
+  }
   return expectRows(value, label, stride, cap);
 }
 
@@ -291,10 +296,10 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   copy(s.flags, expectArray(d.flags, 'flags', sc));
   copy(s.foundedDay, expectArray(d.foundedDay, 'foundedDay', sc));
   copy(s.lastDroughtEvent, expectArray(d.lastDroughtEvent, 'lastDroughtEvent', sc));
-  copy(s.lastFamineEvent, optionalArray(d.lastFamineEvent, 'lastFamineEvent', sc, 0));
-  copy(s.price, optionalArray(d.price, 'price', sc * RES_COUNT, 1000));
-  copy(s.occupier, optionalArray(d.occupier, 'occupier', sc, 0));
-  copy(s.surplusYears, optionalArray(d.surplusYears, 'surplusYears', sc, 0));
+  copy(s.lastFamineEvent, optionalArray(d.lastFamineEvent, 'lastFamineEvent', sc, legacy, 0));
+  copy(s.price, optionalArray(d.price, 'price', sc * RES_COUNT, legacy, 1000));
+  copy(s.occupier, optionalArray(d.occupier, 'occupier', sc, legacy, 0));
+  copy(s.surplusYears, optionalArray(d.surplusYears, 'surplusYears', sc, legacy, 0));
   copy(s.culture, civArray(d.culture, 'culture', 3, cc, legacy, 0));
   copy(s.tech, civArray(d.tech, 'tech', 12, cc, legacy, 0));
   copy(s.techProgress, civArray(d.techProgress, 'techProgress', 12, cc, legacy, 0));
@@ -352,7 +357,8 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   }
   s.chronicleHead = s.chronicleCount % 4096;
 
-  const routes = optionalRows(d.routes?.rows, 'routes.rows', 8, ROUTE_CAPACITY);
+  const routes = optionalRows(d.routes?.rows, 'routes.rows', 8, ROUTE_CAPACITY, legacy);
+  if (!legacy && typeof d.routes?.count !== 'number') throw new SimError('SAVE_CORRUPT', 'society.routes.count is missing');
   s.routeCount = legacy ? 0 : Math.min(ROUTE_CAPACITY, d.routes?.count ?? 0);
   if (routes.length < s.routeCount * 8) throw new SimError('SAVE_CORRUPT', 'society.routes rows shorter than count');
   for (let k = 0; k < s.routeCount; k++) {
@@ -367,7 +373,8 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
     s.routeIdle[k] = routes[o + 7] ?? 0;
   }
 
-  const treaties = optionalRows(d.treaties?.rows, 'treaties.rows', 5, TREATY_CAPACITY);
+  const treaties = optionalRows(d.treaties?.rows, 'treaties.rows', 5, TREATY_CAPACITY, legacy);
+  if (!legacy && typeof d.treaties?.count !== 'number') throw new SimError('SAVE_CORRUPT', 'society.treaties.count is missing');
   s.treatyCount = legacy ? 0 : Math.min(TREATY_CAPACITY, d.treaties?.count ?? 0);
   if (treaties.length < s.treatyCount * 5) throw new SimError('SAVE_CORRUPT', 'society.treaties rows shorter than count');
   for (let k = 0; k < s.treatyCount; k++) {
@@ -379,7 +386,8 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
     s.treatyEnd[k] = treaties[o + 4] ?? 0;
   }
 
-  const wars = optionalRows(d.wars?.rows, 'wars.rows', 12, WAR_CAPACITY);
+  const wars = optionalRows(d.wars?.rows, 'wars.rows', 12, WAR_CAPACITY, legacy);
+  if (!legacy && typeof d.wars?.count !== 'number') throw new SimError('SAVE_CORRUPT', 'society.wars.count is missing');
   s.warCount = legacy ? 0 : Math.min(WAR_CAPACITY, d.wars?.count ?? 0);
   if (wars.length < s.warCount * 12) throw new SimError('SAVE_CORRUPT', 'society.wars rows shorter than count');
   for (let k = 0; k < s.warCount; k++) {

@@ -14,6 +14,8 @@ import { isAlive } from './common.ts';
 export interface AuditOptions {
   /** Expected population identity: initial + births - deaths - (people lost to uncaught paths). */
   expectedPopulation?: number;
+  /** Full semantic validation walks the event ring; run it at year boundaries, not every month. */
+  full?: boolean;
 }
 
 export function auditSociety(world: WorldState, options: AuditOptions = {}): string[] {
@@ -53,11 +55,13 @@ export function auditSociety(world: WorldState, options: AuditOptions = {}): str
   }
 
   // semantic validation is the same contract a loaded save must satisfy
-  try {
-    validateSociety(world, soc);
-  } catch (e) {
-    if (e instanceof SimError) errors.push(e.message);
-    else errors.push(String(e));
+  if (options.full !== false) {
+    try {
+      validateSociety(world, soc);
+    } catch (e) {
+      if (e instanceof SimError) errors.push(e.message);
+      else errors.push(String(e));
+    }
   }
 
   // a dead settlement must not still be counted as a live one
