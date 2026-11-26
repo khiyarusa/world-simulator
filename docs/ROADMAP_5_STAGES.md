@@ -12,7 +12,8 @@ pending**, followed by a **Stage 2.1 hardening pass** (13 verified defects fixed
 **implemented and all eight software acceptance gates are evidenced** by the 20-seed balance harness,
 CI and the LOD A/B test; the only outstanding exit item is the physical Galaxy A23 capture, which this
 environment cannot produce. Trade, build, military, diplomacy, war, technology, culture, the utility
-decision sites and the balance report all exist. See `docs/STAGE_3_REPORT.md`. Stage 4 has not started.
+decision sites and the balance report all exist. See `docs/STAGE_3_REPORT.md`. Stage 4 is
+**software-complete, device-pending**; see `docs/STAGE_4_REPORT.md`.
 
 Stage 2.1 is a reliability pass inside Stage 2, not a sixth roadmap stage: it added no gameplay and no
 new subsystem.
@@ -164,6 +165,12 @@ run at 8×.
 ## Stage 4 — Player experience and game content
 
 **Objective:** it stops being a simulation and becomes a game you can read.
+
+**Status (2026-11-26):** **implemented — all software gates evidenced, physical-device pass pending.**
+The six layers, six panels, four interventions, causality/chronicle, multi-world management, Persian RTL
++ English, unit/integration/E2E and visual QA exist. S4-A1 (stranger usability), S4-A4 (device frame
+times), S4-A5 (200 % text on device), S4-A6 (device contrast) and S4-A8 (restart on device) remain
+Stage 5 device checks. Evidence: [`STAGE_4_REPORT.md`](STAGE_4_REPORT.md).
 
 | Area | Work |
 |---|---|

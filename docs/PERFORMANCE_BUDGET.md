@@ -279,3 +279,28 @@ the save path.
   silently.
 - At Stage 5 the budget table is re-issued as `PERFORMANCE_BUDGET.md` v2 with `[VERIFIED]` marks and
   the device captures attached to the release.
+
+---
+
+## 13. Stage 4 measured additions
+
+Measured on the CI-class Linux runner with the headless tools, Medium preset:
+
+| Metric | Value | Budget |
+|---|---|---|
+| Tick p95 at year 400, 1 seed | 0.323 ms | ≤ 2 ms (CI) |
+| Tick p95 at year 200, 1 seed | 0.226 ms | ≤ 2 ms |
+| Raw save at year 400 | 1,158 KiB (1,185,792 B) | < 1,200,000 B |
+| Invariant failures | 0 | 0 |
+| Population at year 200 | 187,647 | 150k–800k band |
+
+Rendering budgets introduced by Stage 4:
+
+- layer rebuild: on layer change or ≥ 30 simulated days, never per tick;
+- one raster canvas sprite + one vector Graphics per visible layer;
+- marker world radius = screen px / zoom, so the visual cost is constant with zoom;
+- panels refresh at most every 4 s while open and running; history pagination is not refreshed in the
+  background;
+- no blur, shadow or full-screen effect added; the existing vignette/paper grain is baked.
+
+Device frame times, save/load real timings and thermal behaviour remain **pending Stage 5**.

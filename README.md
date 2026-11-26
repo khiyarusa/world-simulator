@@ -6,12 +6,12 @@ and a history is written that you can read and trace back to its causes.
 
 The world does not need you. That is the point.
 
-> **Status: Stage 3 of 5 — in progress. A living core (population, economy, ecology, history) is
-> implemented and persists; the political layer and the balance acceptance harness are not. See
-> [`docs/STAGE_3_REPORT.md`](docs/STAGE_3_REPORT.md).**
-> A seeded world can be generated, inspected, panned, zoomed, time-controlled and saved on Android.
-> Simulation systems (population, economy, politics) start at Stage 3.
-> See [`docs/STAGE_2_REPORT.md`](docs/STAGE_2_REPORT.md) and
+> **Status: Stage 4 of 5 — software-complete, physical-device pass pending.**
+> Six real map layers, six panels, four validated player interventions, causal history and a
+> chronicle, multi-world management, Persian RTL (Vazirmatn) and English. Simulation, saves and
+> determinism are covered by unit, integration, browser E2E and visual-QA runs.
+> See [`docs/STAGE_4_REPORT.md`](docs/STAGE_4_REPORT.md), the design in
+> [`docs/STAGE_4_DESIGN.md`](docs/STAGE_4_DESIGN.md), and
 > [`docs/ROADMAP_5_STAGES.md`](docs/ROADMAP_5_STAGES.md).
 
 ---
@@ -22,7 +22,7 @@ The world does not need you. That is the point.
 - **A simulation, not an animation**: every visible change comes from a simulated variable you can inspect.
 - **Emergent history**: foundings, booms, droughts, famines, migrations, treaties, wars, collapses — each
   event stores what caused it, so "why did this happen?" is answerable up to 8 links back.
-- **Scale without lies**: 200 settlements and 12 civilizations simulated at three detail tiers; population
+- **Scale without lies**: 200 settlements and 12 civilizations simulated at full fidelity every tick; population
   is modelled as cohorts, never as thousands of decorative agents.
 
 ## What it is not

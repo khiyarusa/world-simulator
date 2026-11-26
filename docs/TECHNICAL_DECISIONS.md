@@ -644,3 +644,93 @@ names the invariant it protects, because the next agent will be tempted to "simp
   scans and per-civ-pair border scans) were replaced with one bitmap and one settlement pass.
 - **Why:** measure first; the initial full-system run was 6 minutes per pass because of those two loops.
 - **Trade-off:** the harness itself is a CI job of several minutes; it is the price of evidence.
+
+### D-51 — Schema 4 adds player state inside the existing `meta` block
+
+- **Decision:** interventions (rows + cooldowns), the yearly world series, six settlement trend samples
+  and four player counters are persisted inside the `meta` society block. The four-shard set is
+  unchanged; `SAVE_SCHEMA_VERSION = 4`; a 3→4 document migration exists, and genuine v2/v3 blocks decode
+  with the new rings empty. Checksum contract v6 covers every new value.
+- **Why:** the Stage 2.1 recovery/completeness rules and Stage 3's four-shard identity are load-bearing.
+  A fifth shard would invalidate old generation sets and add a new completeness failure mode for no
+  player benefit.
+- **Trade-off:** the meta block grows by ~9 KiB at year 200 (measured raw save 1,158 KiB at year 400,
+  still under 1,200,000 B). A v4 save missing a ring is rejected as corrupt rather than silently reset.
+
+### D-52 — Queries are typed projections; layers are not a second world model
+
+- **Decision:** every panel and layer reads one of the `QueryWhat` projections in
+  `src/worker/query*.ts`. There is no UI-side aggregate state and no layer-specific copy of the world.
+  Political territory is derived as "nearest living settlement within 18 tiles" and the layer metadata
+  says so; it is not presented as a separately simulated border.
+- **Why:** Stage 3 closed with one authoritative state and a mirror. A second model would drift, and a
+  decorative political layer would contradict ownership. The nearest-settlement projection is honest,
+  cheap, and changes with real settlement ownership.
+- **Trade-off:** sparse worlds show sparse territory (few settlements claim little land), and a border
+  can move when a settlement dies; that is the real owner, not a cartographic embellishment.
+
+### D-53 — Commands are worker-validated and report actual effects
+
+- **Decision:** the four interventions are `player` commands. The worker validates live targets,
+  resource/amount, intensity, duration, civ pair, war state and cooldown; applies the effect; appends a
+  persisted row and an event with cause `-2`; returns `{ok, code, message, eventId, effects[]}`. The UI
+  reports only that result.
+- **Why:** a UI-side clamp is not a rule, and "success" before the worker confirms is a lie. Bless is an
+  exogenous gift but hard-capped at 10 % of current + one year of use; the reported delta is the amount
+  `addStock` actually accepted.
+- **Trade-off:** a refused command still costs a round-trip and the UI must show the refusal; that is
+  preferable to a button that pretends.
+
+### D-54 — One query/command surface, bounded and failure-aware
+
+- **Decision:** `queryResult` carries a discriminated `QueryResponse`; failed queries reject on the
+  client. `commandResult` carries the structured intervention result. Lists are bounded (history 50,
+  chronicle 40, settlements 40, layer events 100), and layer cells are freshly allocated and
+  transferred.
+- **Why:** the Stage 2 protocol returned `unknown` and `null`; a panel could not distinguish "missing
+  entity" from "worker failed". Typed failures make the UI honest and testable.
+- **Trade-off:** more types and a small amount of dispatch code; no runtime dependency added.
+
+### D-55 — Persian RTL (Vazirmatn) is the default interface; English is complete
+
+- **Decision:** the game ships Persian RTL as the default and English as a complete second language.
+  All strings pass through `t()`; dictionaries live in `i18n.fa.ts`/`i18n.en.ts`. Layout uses logical
+  CSS properties, numbers are isolated with `dir="ltr"` and proper nouns with `unicode-bidi: plaintext`.
+  Language is stored locally; `?lang=en` exists for tests. Vazirmatn (three WOFF2 weights, 152 KB) is
+  bundled under the SIL OFL with its licence.
+- **Why:** the user's interface standard is Persian RTL, while the code and design docs are English.
+  A cosmetic RTL toggle that breaks alignment would satisfy neither. This resolves the contradiction
+  explicitly instead of leaving it implicit.
+- **Trade-off:** two dictionaries to keep in sync and Persian text expansion to test on device; the
+  tab strip wraps so all six panels remain reachable.
+
+### D-56 — Layers refresh on change/30 days; marker size is screen-space
+
+- **Decision:** raster layers are one cached canvas texture rebuilt only on layer change or after 30
+  simulated days; vector layers are one `Graphics` rebuilt on layer/zoom change. Marker world radius is
+  `screenPixels / zoom`; vector symbols draw above settlement glyphs, raster territory below them.
+- **Why:** rebuilding a layer every tick would violate the simulation/render separation and burn the
+  frame budget; drawing population dots at the settlement centre hid them under the 19 px glyph.
+- **Trade-off:** a marker is a symbol, not a geographic area; zooming changes its world footprint. The
+  hit radius is widened in screen space so touch remains usable at fit zoom.
+
+### D-57 — Multiple worlds are first-class; thumbnails are real captures
+
+- **Decision:** each world has a stable `w-<time36>-<rand36>` id, its own generation chain, metadata and
+  a thumbnail captured from the real framebuffer at save time. Boot opens world selection; create,
+  play, rename, delete (confirmed) and recovery all act on one id.
+- **Why:** the Stage 2 storage layer already supported multiple worlds but the game hard-coded
+  `world-1`. A world list with fake thumbnails would be worse than no thumbnails.
+- **Trade-off:** a thumbnail adds ~20–30 KB per world doc (JPEG data URL); it is optional for old docs
+  and rendered as a monogram fallback when absent.
+
+### D-58 — Split the new UI/session/query files at the 500-line boundary
+
+- **Decision:** rather than raising the repository's 500-line hard limit, Stage 4 splits the query
+  layer (types/names/events/economy/layers/handler), the panels (core/societies/history/influence), the
+  session (core/worlds/facade), the codec (types/encode/decode), the society state (state/allocate/rings)
+  and the dictionaries (runtime/en/fa).
+- **Why:** the limit exists to stop a single composition file becoming the place every change touches;
+  the split keeps each file with one owner and makes the Stage 4 diff reviewable.
+- **Trade-off:** more modules and a few re-export lines; the build and the repository gate both accept
+  the result.

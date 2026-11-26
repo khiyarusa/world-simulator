@@ -199,3 +199,20 @@ in CI by a script that diffs `assets/**` against `manifest.json`.
 No images are generated, downloaded, or committed in Stage 1. This document is the specification the
 Stage 4 asset work will follow; producing art before the renderer, palette constants and DPR strategy
 exist would guarantee a rework.
+
+---
+
+## 9. Stage 4 delivered inventory
+
+| Asset | Form | Source / licence | Weight |
+|---|---|---|---|
+| Terrain, relief, rivers, coast | procedural bake from real grids | project code | 0 |
+| Settlement glyphs, 5 tiers + 5 ruined | procedural Canvas → Pixi Texture | project code | 0 |
+| UI icons (layers, panels, resources, actions) | inline 24 px SVG, `currentColor` | project code | < 8 KB |
+| Vazirmatn Regular/Medium/Bold | WOFF2 | SIL OFL 1.1, `public/fonts/OFL.txt` | 152 KB + licence |
+| Layer legends/scales | CSS gradients + shapes | project code | 0 |
+| World thumbnails | runtime JPEG data URL in the world doc | real framebuffer capture | ~20–30 KB/world (storage, not shipped) |
+
+No binary art pack, no unlicensed asset, no downloaded texture. The 6 MB target is not close to being
+used. The manifest rule is met by this table plus `public/fonts/OFL.txt`; missing assets are impossible
+by construction because the glyphs/icons are generated, and the font has a system fallback.

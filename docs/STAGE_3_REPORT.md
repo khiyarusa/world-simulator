@@ -6,7 +6,8 @@ complete because the physical Galaxy A23 capture required by the roadmap exit co
 performed in this environment.**
 
 Every number below comes from a GitHub Actions run or a committed test. Nothing is marked PASS because
-code exists; the gate table states the run that proves it. Stage 4 has not started.
+code exists; the gate table states the run that proves it. Stage 4 was not started at the time of this
+report; its result is in `docs/STAGE_4_REPORT.md`.
 
 ---
 
@@ -178,4 +179,4 @@ numbers above are copied from that artifact, not hand-written.
 ---
 
 **Stage 3 is not declared complete.** All eight software gates are green; the roadmap's device capture
-is the one outstanding exit item. Stage 4 remains untouched.
+is the one outstanding exit item. Stage 4 is reported separately; this report's scope is unchanged.

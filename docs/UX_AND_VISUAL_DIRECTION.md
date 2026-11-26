@@ -266,3 +266,39 @@ theme change that breaks contrast fails the build — cheaper than an accessibil
 
 Each of these is a performance or legibility decision, not a taste decision, and each is reclaimable
 in a hypothetical Stage 6 that does not exist.
+
+---
+
+## 12. Stage 4 resolution (what the implementation actually does)
+
+### 12.1 Language is resolved
+
+The interface ships **Persian RTL with Vazirmatn as the default**, and English as a complete second
+language. This supersedes the earlier "English-first" assumption for the *player interface* (the code,
+docs and generated proper nouns remain English/Latin data). The decision is D-55. `?lang=en` is
+supported for automated tests; the choice is stored in `localStorage`.
+
+- Layout uses logical properties (`inset-inline`, `padding-inline`, `text-align: start`), not a mirrored
+  duplicate stylesheet.
+- Numbers are isolated with `dir="ltr"`; settlement/civilization names use `unicode-bidi: plaintext`.
+- Persian digits, seasons, months, resources, cohorts, infrastructure, technology, treaties and event
+  names are translated in `i18n.fa.ts`.
+- The language switch is in the World panel and the world-selection screen; it re-renders the tab strip,
+  title, top bar, save state and legend, not only the panel body.
+
+### 12.2 Layout actually shipped
+
+- Portrait: map full-bleed; 52 px top bar; three-target bottom arc (Layers, Speed, Menu); selection chip;
+  bottom sheet for layer/speed; a 82 vh panel sheet with a wrapping tab strip for all six panels.
+- Wide/landscape (≥ 680 px): the panel becomes a right-side sheet (left in RTL), max 520 px; the dock is
+  constrained to a thumb-reachable column.
+- Safe-area insets on every edge; 48 dp targets; wrapped controls; no destructive action without a
+  confirmation phrase.
+- Layer legend shows real symbol shapes/scales (territory swatch, capital diamond, war/treaty lines,
+  population/ecology gradients, severity dots), not colour alone.
+
+### 12.3 Panel information architecture
+
+Each panel is a vertical hierarchy: hero (identity) → risk/pill row → stat grid → measured section
+(headings, meters, charts) → actions. Tables are capped and scroll; the history feed owns its pagination.
+There is no "dump every field" list; the most decision-relevant values are visible without scrolling.

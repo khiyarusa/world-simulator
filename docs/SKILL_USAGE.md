@@ -205,3 +205,19 @@ only while the relevant subsystem was being built:
 
 Gaps: no skill covers a Web Worker simulation protocol or IndexedDB generation transactions; those were
 implemented from the Stage 2 decisions (D-33…D-39) and recorded in `docs/TECHNICAL_DECISIONS.md`.
+
+---
+
+## 7. Stage 4 — skills actually used
+
+| Skill | Where it was applied | What changed because of it |
+|---|---|---|
+| `gamedev-router` | start of the stage; project fingerprint is PixiJS 8 + web worker + IndexedDB | routed to PixiJS/UI/save/docs skills; no engine migration |
+| `game-ui-ux` | panel hierarchy, tab overflow, safe areas, screen stack, event-driven refresh | tab strip wraps instead of hiding panels; panels refresh on a timer only while open; 48 dp targets and safe-area insets |
+| `pixijs-rendering` | layer containers, one cached raster sprite, one vector Graphics, no per-frame allocation | territory below glyphs, symbols above them; marker screen-space sizing; texture caching |
+| `save-systems` | schema 4 design, ordered migrations, legacy decode, corruption handling, multiple generations | new rings are additive in `meta`; v2/v3 blocks decode empty; v4 missing rings is corrupt; world ids are stable |
+| `game-docs` | this report, Stage 4 design, ADR rows, status reconciliation | docs describe the code that exists; stale Stage 2/3 claims (LOD, 20k events, English-first UI) corrected |
+| `create-game-assets` | procedural glyph/icon/font inventory and licence record | no unlicensed pack; 152 KB font under OFL; asset manifest table |
+
+Not loaded because they did not own the task: `game-ai`, `ai-behavior-trees-utility-ai` (simulation AI was
+finished in Stage 3), `audio-design` (audio is P1 and not implemented), `physics-tuning`, `shader-programming`.

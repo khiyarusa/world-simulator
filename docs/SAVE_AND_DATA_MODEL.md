@@ -31,7 +31,7 @@ load defensively; migrate forward only.
 | Civilization store (incl. 12×12 relation/grievance/treaty matrices) | politics state |
 | Character store (≤ 60) | narrative continuity |
 | Trade route edges (≤ 400) | economy topology |
-| Event ring (20k) + major event store | history, cause chains |
+| Event ring (14,000) + vital severe ring (4,096) | history, cause chains |
 | Chronicle (per civ per year, downsampled) | readable history |
 | **RNG stream states** (xoshiro128** 4×u32 × 12 streams ≈ 192 B) | exact resumption; without this, reload perturbs future randomness |
 | Decision ring buffer (64 records) | "why?" explanations survive a reload |
@@ -208,40 +208,59 @@ a recovery sheet with "Export damaged save" (P1) and "Start new world".
 ## 7. Schema versioning and migration
 
 ```ts
-const SAVE_VERSION = 1;   // Stage 1 value; bumped by any persisted-shape change
+// src/core/saveSchema.ts — one source of truth
+export const SAVE_SCHEMA_VERSION = 4;
+export const MIN_SUPPORTED_SCHEMA = 1;
 
-type Migration = (doc: WorldDoc, shards: ShardMap) => void;
-const migrations: Record<number, Migration> = {
-  // 1 -> 2: { ... }
+// src/platform/migrations.ts — pure document transforms, never deleted
+const MIGRATIONS = {
+  1: (doc) => ({ ...doc, schemaVersion: 2 }),  // society block added to the payload
+  2: (doc) => ({ ...doc, schemaVersion: 3 }),  // routes/treaties/wars/military/tech/prices
+  3: (doc) => ({ ...doc, schemaVersion: 4 }),  // interventions, yearly series, trend windows
 };
 ```
 
 Rules, learned from the skill's versioning guidance:
 
-- Migrations are **pure**: read a shard, return a new one; never touch IDB inside a migration.
-- Migrations run **in order**: 1→2→3, never skipping.
+- Migrations are **pure**: read a doc/block, return a new one; never touch IDB inside a migration.
+- Migrations run **in order** (1→2→3→4), and each step is verified to produce exactly the next version.
 - Migrations are **never deleted** — a shipped version's save must remain loadable forever.
-- Adding a field = migration that fills a default; renaming = copy + delete; removing = keep the old
-  field ignored for two versions, then drop.
-- Every migration has a fixture: a real save of the old version in `tests/fixtures/saves/vN.wsv`, loaded
-  in CI after every schema change.
-- `generatorVersion` (world content) and `schemaVersion` (save shape) are **independent**. A generator
-  change does not migrate saves; it only matters if a save is regenerated (which we never do implicitly).
+- The shard set is unchanged at four (`meta`, `terrain`, `settlements`, `civs`); new society state
+  travels inside the `meta` block (D-44), so completeness/recovery rules do not change.
+- A genuine v2/v3 society block decodes with the Stage 4 rings **empty**, because that world never had
+  interventions or yearly samples. A v4 block missing them is `SAVE_CORRUPT`, not silently initialised.
+- `generatorVersion` (world content) and `schemaVersion` (save shape) are **independent**.
+
+### 7.1 Schema 4 additions (inside `meta.society`)
+
+| Field | Shape | Meaning |
+|---|---|---|
+| `interventions` | `{count, last[4], rows[8]}` | kind, targets, start/end day, intensity, resource, amount; `last` is the cooldown clock |
+| `stats` | `{count, rows[10]}` | yearly population/settlements/civs/cumulative food/cumulative trade/treasury/wars/fertility/drought |
+| `trend` | `{counts[settlements], values[settlements×6]}` | six capped yearly population samples per settlement |
+| counters | four numbers | blessings, blights, fertilized, incited |
+
+Checksum contract **v6** covers every one of these values. Existing v2/v3 save fixtures still decode;
+`tests/persistence/schema4.test.ts` proves the legacy decode, the missing-ring corruption case and the
+round-trip checksum.
 
 ## 8. Retention policy (bounded history)
 
-| Data | Retention | At the limit |
-|---|---|---|
-| Events severity 5 | forever | none (≈ 30–80 per 500 years) |
-| Events severity 4 | forever | capped at 100k; beyond that, severity-5 only |
-| Events severity 3 | 200 years | rolled into per-year counters, then dropped |
-| Events severity ≤ 2 | not stored | aggregated into yearly statistics |
-| Chronicle entries | 200 years full text | older: one entry per decade per civ (~8× compression) |
-| Characters | 60 living + last 40 dead (id + epitaph) | oldest dead dropped |
-| Decision records | last 64 | ring buffer |
+The Stage 3 retention contract (D-46) is unchanged except that Stage 4 adds bounded rings. There is no
+"kept forever" claim: every ring is finite and the player is told which history survives.
 
-Consequence: history stays rich where it matters (the last two centuries and everything
-world-changing) and cheap where it does not. This is why a 500-year world still saves in ~0.4 MB.
+| Data | Capacity | At the limit |
+|---|---|---|
+| Main event ring | 14,000 events | oldest row overwritten; cause chains are measured over what survives |
+| Vital severe ring | 4,096 events (severity ≥ 4) | oldest severe row overwritten after the main ring has already wrapped |
+| Chronicle | 4,096 rows (per civ per year) | oldest year overwritten |
+| Decision records | 64 | ring buffer |
+| Yearly world series | 256 samples | oldest year overwritten |
+| Settlement trend | 6 yearly samples | oldest sample shifted out |
+| Intervention rows | 64 | oldest action row overwritten; the event itself remains in history |
+
+Measured Medium save at year 400: **1,158 KiB raw (1,185,792 bytes)**, under the 1,200,000-byte
+contract; the earlier 0.4 MB figure in this document was a Stage 1 target, not a measurement.
 
 ## 9. Autosave
 

@@ -303,3 +303,20 @@ conservation across births/deaths/migration/founding, cohort/occupation identity
 prices, infrastructure payment, trade conservation, ecology and blight, civilization/technology,
 diplomacy, the four-condition war gate, event-ring ordering and retention, v1/v2/v3 save paths, a v3
 corruption case, and a fixed-vs-moving-camera A/B test on the real pipeline.
+
+---
+
+## 12. Stage 4 additions to the test strategy
+
+- **Unit/integration:** intervention limits/cooldowns/conservation/determinism, query validation and
+  pagination, layer shapes, schema-4 legacy decode/corruption/round-trip, world generation and saves.
+  Current suite: **114 tests in 16 files**.
+- **Browser E2E:** two specs, **8 tests**, covering boot → create → six layers → six panels → command →
+  event → save/reload → two worlds → rename/delete → damaged-generation recovery. Ports are isolated from
+  other projects on the machine (4174/4175).
+- **Visual QA:** `tests/visual/capture.spec.ts`, 390×844 @ DPR 2, captures 19 real screens (worlds,
+  creation, terrain + five layers, six panels, event causality, chronicle, English world panel/map,
+  saved world list) into `docs/qa/stage4/`. CI uploads `visual-qa-<sha>` and the images are committed.
+- **Repository gates:** the 500-line limit is honoured by splitting the new modules (D-58); the
+  determinism/lint gates run unchanged.
+- **Device:** still Stage 5. E2E proves the software path, not A23 frame times, touch feel or TalkBack.

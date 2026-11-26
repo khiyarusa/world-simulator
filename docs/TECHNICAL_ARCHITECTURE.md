@@ -82,68 +82,71 @@ sim ⇸ render  (never, in either direction)
 ## 5. Worker protocol (the contract)
 
 All messages are plain objects with a discriminated `t` field. Typed arrays are **transferred**, not
-cloned, and buffers are **recycled** (the worker keeps a pool and the main thread returns them).
+cloned, and render-delta buffers are **recycled** (the worker pools them; the main thread returns them
+with `release`). This section describes the code in `src/worker/protocol.ts`; it replaced the Stage 2
+sketch, which listed messages the implementation never shipped.
 
 ```ts
 // ---------- main → worker ----------
 type Cmd =
-  | { t: 'init'; cfg: { maxSettlements: 200; maxCivs: 12; seed: string } }
+  | { t: 'init'; maxSettlements: number }
   | { t: 'create'; recipe: WorldRecipe }
-  | { t: 'load'; shards: SaveShard[]; meta: SaveMeta }
+  | { t: 'load'; shards: SaveShard[] }
   | { t: 'speed'; speed: 0 | 1 | 2 | 4 | 8 }
-  | { t: 'view'; x: number; y: number; w: number; h: number; zoom: number }
-  | { t: 'select'; kind: 'settlement' | 'civ' | 'cell' | 'event' | 'none'; id: number }
-  | { t: 'intervene'; kind: 'gift' | 'blight' | 'fertilize' | 'incite'; target: number; amount?: number }
+  | { t: 'view'; x; y; w; h; zoom }                 // worker stores it for tier labelling only
+  | { t: 'select'; id: number | null }
   | { t: 'query'; qid: number; what: QueryWhat }
-  | { t: 'save'; sid: number; mode: 'full' | 'delta' }
-  | { t: 'setTierHint'; visible: Uint16Array }        // recycled buffer
-  | { t: 'pause' } | { t: 'resume' } | { t: 'dispose' };
+  | { t: 'player'; token: number; command: PlayerCommand }
+  | { t: 'save'; sid: number }
+  | { t: 'preview'; token: number; recipe: WorldRecipe }
+  | { t: 'pause' } | { t: 'resume' }
+  | { t: 'release'; buffers: ArrayBuffer[] }
+  | { t: 'dispose' };
 
 // ---------- worker → main ----------
-type Msg =
-  | { t: 'ready'; caps: { wasm: false; sab: false } }
+type WorkerMsg =
+  | { t: 'ready' }
   | { t: 'progress'; stage: string; pct: number }
-  | { t: 'worldMeta'; meta: WorldMeta }
-  | { t: 'delta'; seq: number; day: number; stats: TickStats; mirror: MirrorDelta }
-  | { t: 'eventBatch'; events: PackedEvent[]; major: PackedEvent[] }
-  | { t: 'queryResult'; qid: number; data: unknown }
-  | { t: 'saveShard'; sid: number; shard: SaveShard }
-  // Serialisation finished, not durability: the IndexedDB commit happens on the main thread.
+  | { t: 'worldMeta'; meta: WorldMetaMsg }
+  | { t: 'terrain'; width; height; grids: TerrainArrays }   // structured-cloned once per world
+  | { t: 'delta'; delta: MirrorDelta }
+  | { t: 'stats'; tickP50; tickP95; tickMax; dropped; speed; day }
+  | { t: 'queryResult'; qid: number; response: QueryResponse }
+  | { t: 'commandResult'; token; ok; code; message; eventId; effects; cooldownDays }
+  | { t: 'previewResult'; token; width; height; biome; elevation }
+  | ({ t: 'saveShard' } & SaveShard)
   | { t: 'savePrepared'; sid: number; checksum: string; bytes: number }
-  | { t: 'notify'; level: 'info' | 'warn' | 'error'; code: string; msg: string }
-  | { t: 'crashed'; code: string; msg: string; lastGoodDay: number };
+  | { t: 'notify'; level; code; msg }
+  | { t: 'crashed'; code; msg; lastGoodDay };
+```
 
+`QueryWhat` covers `world`, `settlement`, `settlements`, `civ`, `civs`, `economy`, `ecology`,
+`history`, `event`, `chronicle`, `decisions`, `layer`, `interventions` and `debug`. `QueryResponse` is
+`{ok:true,data}` or `{ok:false,code,message}`; the client rejects a failed query instead of handing a
+half-filled object to a panel. `PlayerCommand` is the four intervention commands.
+
+```ts
 interface MirrorDelta {
   seq: number;
+  day: number;
   count: number;
-  // parallel arrays, length = count; ids are stable, arrays grow only when settlements are added
   id: Uint16Array;
   pop: Int32Array;
   civ: Uint8Array;
   tier: Uint8Array;
-  foodRatio: Uint8Array;   // 0..255 → reserve health
-  stability: Uint8Array;
-  flags: Uint8Array;       // starving | atWar | occupied | ruined
-  dirtyDraw: Uint16Array;  // ids whose sprite/符号 must be rebuilt (tier change, ruin)
+  state: Uint8Array;   // 1 ruined, 2 starving, 4 drought, 8 blight, 16 occupied, 32 prosperous, 64 declining
 }
 ```
 
 Rules:
-- **Delta cadence:** the worker emits at most one `delta` per 250 ms of real time, and only if
-  `seq > lastSent` or a structural change occurred. At 8× speed the sim may run 20 days between
-  deltas; that is correct — the renderer is a *view*, not a clock.
-- **No full state on the wire.** Only the mirror fields above (≈ 200 × 24 B = 4.8 KB worst case).
-- **Queries are request/response** with `qid`; the main thread never blocks on them.
-- **Commands are queued** and applied at the next tick boundary, so a command cannot land mid-phase.
-  This is required for determinism: the command log is the only external input.
-- **Backpressure:** the main thread returns recycled buffers; if none are available the worker
-  allocates a fresh one (a soft cap of 8 buffers, after which it coalesces deltas).
-
-### 5.1 Command log (determinism evidence)
-
-Every `Cmd` is appended to a log with `(day, cmdIndex)`. The checksum is `hash(seed, day, stateCRC,
-hash(commandLog))`. Two runs with the same log must match. The log is also what makes "replay a bug"
-possible from a user's save plus a handful of commands.
+- **Delta cadence:** at most one `delta` per 250 ms of real time; at 8× the sim may run 20 days between
+  deltas. The renderer is a view, not a clock.
+- **No full state on the wire.** The mirror is settlement-id/population/civ/tier/state only.
+- **Queries never mutate.** They validate arguments, bound lists (history/chronicle paginate; layers
+  cap at the world grid) and return fresh objects.
+- **Commands are validated in the worker**, return a structured result, append a real event/cause and
+  are safe against bad ids, repeated requests and cooldowns. A failed command changes nothing.
+- **One writer.** Only the worker mutates `WorldState`; only the main thread touches IndexedDB.
 
 ## 6. Scheduling and the fixed timestep
 
@@ -181,14 +184,13 @@ worker timer loop →  │ accumulator += min(dtReal, 250ms) × speed │
 Application (webgl; webgpu not requested)
 └── stage
     ├── worldRoot (Container, isRenderGroup: true)
-    │   ├── terrainSprite        ← 1 Sprite of a 2048² RenderTexture (whole world, baked once)
-    │   ├── terrainDetail        ← 1 Sprite of a 2048² RenderTexture (visible region, re-baked on zoom)
-    │   ├── riversSprite         ← baked overlay
-    │   ├── routesLayer          ← Graphics (batched, ≤ 400 short polylines, redrawn on change only)
-    │   ├── settlementsLayer     ← Sprite pool (≤ 200), one atlas texture, tinted by civ
-    │   ├── effectsLayer         ← ≤ 64 pooled sprites (fire, dust, ships)
-    │   └── selectionLayer       ← 1–2 Graphics
-    └── hudRoot (Container)      ← DOM UI lives *above* the canvas, not inside PixiJS
+    │   ├── terrainSprite        ← 1 Sprite of the baked 2048² terrain texture
+    │   ├── layerRaster          ← 1 Sprite of a cached layer canvas (territory/soil), or empty
+    │   ├── settlementsLayer     ← Sprite pool (≤ 200), tinted by civ, tier/ruined texture
+    │   ├── stateMarks           ← 1 Graphics (occupied/starving/prosperous marks)
+    │   ├── layerVector          ← 1 Graphics (routes, capitals, hazards, event pins)
+    │   └── selection            ← 1 Graphics
+    └── hudRoot (DOM)            ← labels, HUD, panels; never inside PixiJS
 ```
 
 Decisions:
