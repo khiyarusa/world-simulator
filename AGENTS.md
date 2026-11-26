@@ -25,7 +25,7 @@ The product test for every decision: *does this make the world more causally rea
 | 1 — Foundation & architecture | **complete** (design + skills) |
 | 2 — World engine & playable foundation | **implementation complete — device validation pending** (`docs/STAGE_2_REPORT.md`) |
 | 2.1 — Reliability and correctness hardening | **complete** — 13 verified defects fixed, all with regression tests (`docs/STAGE_2_1_HARDENING.md`) |
-| 3 — Living world & civilization systems | **in progress — living core delivered, political layer and balance harness outstanding** (`docs/STAGE_3_REPORT.md`) |
+| 3 — Living world & civilization systems | **implementation and all eight software gates evidenced; physical Galaxy A23 capture pending** (`docs/STAGE_3_REPORT.md`) |
 | 4 — Player experience & content | not started |
 | 5 — Optimisation, QA, release | not started |
 
@@ -212,14 +212,26 @@ Do not start a stage (or any implementation) unless the task prompt explicitly s
 
 ## 10. Current next action
 
-1. Run the device protocol in `docs/PERFORMANCE_BUDGET.md` §11 on a Galaxy A23 and record the
-   captures in the Stage 2 report (S2-A2, S2-A3, S2-A4, S2-A6).
-2. Only then start Stage 3 (population, economy, settlements, civilizations, politics, ecology,
-   history) — with a save-schema bump for the new shards and the balance harness as the exit gate.
+Stage 3 is implemented and its eight software acceptance gates are evidenced in
+`docs/STAGE_3_REPORT.md`. The only outstanding exit item is the physical-device capture, which this
+environment cannot produce:
 
-Before changing anything, read `docs/STAGE_2_REPORT.md` §J and `docs/STAGE_2_1_HARDENING.md` §2: they
-list the known gaps and the deliberate non-fixes, so a future agent does not rediscover them as
-surprises.
+1. Install the CI APK (`android` workflow artifact) on a Galaxy A23 and run the protocol in
+   `docs/PERFORMANCE_BUDGET.md` §11: a 50-year run at 8x, plus the save/load timings at year 200.
+2. Record the captures in the Stage 3 report §8. Do not mark Stage 3 complete before that; do not
+   start Stage 4 (player experience, panels, information layers) before Stage 3 is signed off.
+
+Before changing anything, read `docs/STAGE_3_REPORT.md` §9 (remaining risks) and
+`docs/STAGE_2_1_HARDENING.md` §2. The Stage 3 contract that a future change must not silently break:
+
+- cohorts are the only population representation (D-42); `settlements.pop` is a projection.
+- the four-shard save set is unchanged and the society block lives in `meta` (D-44); schema 3 keeps
+  decoding genuine v2 blocks.
+- the war gate is four conditions, and every declaration persists all four values (D-47).
+- a severe event has an earlier cause or the explicit root marker `-1`; the harness measures this over
+  every event it saw, not only the retained tail (D-46).
+- moving the camera cannot change history; `tests/determinism/lod.test.ts` proves it on the real
+  pipeline.
 
 Invariants established by the hardening pass — do not "simplify" them away:
 

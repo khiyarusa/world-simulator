@@ -1,5 +1,5 @@
 /**
- * The vital-event ring: a small second ring that preserves severity-4/5 history when the main 15,000
+ * The vital-event ring: a small second ring that preserves severity-4/5 history when the main 14,500
  * event ring wraps. A severe event is written to both rings with the same stable id, so a cause chain
  * can resolve an ancestor that the main ring has already evicted (docs/STAGE_3_DESIGN.md §9.3).
  */

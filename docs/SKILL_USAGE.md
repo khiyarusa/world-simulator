@@ -186,3 +186,22 @@ at once (router §5).
 Gaps hit in practice (unchanged from §4): no skill covers Capacitor packaging, worker protocols or
 IndexedDB mechanics; those were implemented from the official documentation and are recorded in
 `docs/TECHNICAL_DECISIONS.md` D-23…D-31.
+
+
+---
+
+## 8. Stage 3 application log (implementation, 2026-11-26)
+
+Router re-run at the start of Stage 3: engine **PixiJS 8** (the renderer is the only engine; the
+simulation is a worker), task class = simulation/save/performance. Skills were loaded progressively and
+only while the relevant subsystem was being built:
+
+| Skill | What it actually changed in the code |
+|---|---|
+| `ai-behavior-trees-utility-ai` | Utility inputs are normalized integers and combined with vetoes before scoring. Infrastructure selection scores need + cultural affinity − cost, refuses unaffordable or illegal buildings, and records the chosen bit and score. The war decision is a utility margin (declare_war minus the best alternative) with hysteresis, not a coin flip; the four gate values are persisted with the declaration. |
+| `save-systems` | State is plain typed arrays, versioned (v3) and migrated step by step (1→2→3); the decoder validates semantics, not just shapes; a v3 block missing a structure is corruption; genuine v2 blocks are expanded into the fixed 12-civ stride; the vital ring and the retention contract are explicit; the harness measures raw and compressed size and a real year-200 capture. |
+| `performance-optimization` | Measure first: the harness found two quadratic hotspots (route-pair scans and per-civ-pair border scans) and a per-founding occupancy scan. They were replaced with one pair bitmap, one yearly border matrix and a local occupancy mask, taking a 200-settlement pass from minutes to ~10 s while p95 stayed 0.06–0.11 ms. Measure the worst case (200 settlements, 12 civs), not a toy world. |
+| `game-docs` | One fact, one home: the stage report owns measured numbers, the design owns the contract, ADRs own decisions, and the balance JSON is the artifact. Gate tables state PASS/FAIL/PENDING with the run that proves it. |
+
+Gaps: no skill covers a Web Worker simulation protocol or IndexedDB generation transactions; those were
+implemented from the Stage 2 decisions (D-33…D-39) and recorded in `docs/TECHNICAL_DECISIONS.md`.

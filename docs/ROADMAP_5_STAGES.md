@@ -6,13 +6,13 @@ was written; it is complete when its gates are green **and** the evidence is att
 
 Numbering: `S<n>-A<m>` is referenced from PRs and stage reports.
 
-**Status (2026-11-25):** Stage 1 complete. Stage 2 **implementation complete — device validation
+**Status (2026-11-26):** Stage 1 complete. Stage 2 **implementation complete — device validation
 pending**, followed by a **Stage 2.1 hardening pass** (13 verified defects fixed, ledger in
-`docs/STAGE_2_1_HARDENING.md`). Acceptance evidence: `docs/STAGE_2_REPORT.md` §I. Stage 3 is **in
-progress**: the living core (cohorts, economy, ecology, demography, migration, events, save v2 +
-migration) is implemented and tested; trade, build, military, diplomacy, war, technology, culture, the
-utility-AI decision sites and the 20-seed balance harness are outstanding. No Stage 3 acceptance gate is
-claimed. See `docs/STAGE_3_REPORT.md`. Stage 4 has not started.
+`docs/STAGE_2_1_HARDENING.md`). Acceptance evidence: `docs/STAGE_2_REPORT.md` §I. Stage 3 is
+**implemented and all eight software acceptance gates are evidenced** by the 20-seed balance harness,
+CI and the LOD A/B test; the only outstanding exit item is the physical Galaxy A23 capture, which this
+environment cannot produce. Trade, build, military, diplomacy, war, technology, culture, the utility
+decision sites and the balance report all exist. See `docs/STAGE_3_REPORT.md`. Stage 4 has not started.
 
 Stage 2.1 is a reliability pass inside Stage 2, not a sixth roadmap stage: it added no gameplay and no
 new subsystem.
