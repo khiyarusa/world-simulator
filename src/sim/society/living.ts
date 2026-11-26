@@ -49,7 +49,7 @@ export const RULE = {
 // winter..autumn; the mean is ~0.85, so a settlement is viable at its labour share, not only in summer
 const SEASON_YIELD_PM = [500, 800, 1100, 1000] as const;
 
-import { FLAG_DROUGHT, FLAG_STARVING, isAlive } from './common.ts';
+import { FLAG_DROUGHT, FLAG_RUINED, FLAG_STARVING, isAlive } from './common.ts';
 
 export { isAlive } from './common.ts';
 
