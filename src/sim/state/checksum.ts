@@ -13,9 +13,9 @@ import type { WorldState } from './worldState.ts';
  * Field order is frozen. Everything hashed here is deterministic persisted state; nothing here is
  * transient (no render, camera, UI, timing or report data).
  */
-export const CHECKSUM_CONTRACT_VERSION = 3;
+export const CHECKSUM_CONTRACT_VERSION = 4;
 
-const CHECKSUM_DOMAIN = 0x43534d33; // "CSM3"
+const CHECKSUM_DOMAIN = 0x43534d34; // "CSM4"
 
 function bytesOf(view: Int16Array | Int8Array | Uint8Array | Uint16Array): Uint8Array {
   return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
@@ -93,8 +93,32 @@ export function worldChecksum(state: WorldState): number {
     crc = crc32OfU32(crc, soc.stability[i] ?? 0);
     crc = crc32OfU32(crc, soc.treasury[i] ?? 0);
     crc = crc32OfU32(crc, soc.infra[i] ?? 0);
-    for (let r = 0; r < 6; r++) crc = crc32OfU32(crc, soc.stock[i * 6 + r] ?? 0);
+    crc = crc32OfU32(crc, soc.flags[i] ?? 0);
+    crc = crc32OfU32(crc, soc.literacy[i] ?? 0);
+    for (let r = 0; r < 6; r++) {
+      crc = crc32OfU32(crc, soc.stock[i * 6 + r] ?? 0);
+      crc = crc32OfU32(crc, soc.cap[i * 6 + r] ?? 0);
+      crc = crc32OfU32(crc, soc.carry[i * 6 + r] ?? 0);
+    }
+    for (let k = 0; k < 5; k++) crc = crc32OfU32(crc, soc.occShare[i * 5 + k] ?? 0);
   }
+
+  for (let c = 0; c < state.civs.count; c++) {
+    crc = crc32OfU32(crc, soc.legitimacy[c] ?? 0);
+    for (let a = 0; a < 3; a++) crc = crc32OfU32(crc, (soc.culture[c * 3 + a] ?? 0) & 0xff);
+    for (let t = 0; t < 12; t++) crc = crc32OfU32(crc, soc.tech[c * 12 + t] ?? 0);
+    for (let o = 0; o < state.civs.count; o++) {
+      crc = crc32OfU32(crc, (soc.relation[c * state.civs.count + o] ?? 0) & 0xff);
+    }
+  }
+
+  for (let r = 0; r < 16; r++) {
+    crc = crc32OfU32(crc, soc.regionPrecip[r] ?? 0);
+    crc = crc32OfU32(crc, soc.regionDroughtMonths[r] ?? 0);
+    crc = crc32OfU32(crc, (soc.regionTempAnomaly[r] ?? 0) & 0xff);
+  }
+  crc = crc32OfU32(crc, soc.decisionCount);
+  crc = crc32OfU32(crc, soc.chronicleCount);
   // the event ring's head entry is enough to detect a dropped or reordered history
   if (soc.eventCount > 0) {
     const head = (soc.eventHead - 1 + soc.eventId.length) % soc.eventId.length;

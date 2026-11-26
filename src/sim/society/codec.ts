@@ -7,6 +7,7 @@
  */
 import { SimError } from '../../core/errors.ts';
 import type { WorldState } from '../state/worldState.ts';
+import { validateSociety } from './validate.ts';
 import {
   allocateSociety,
   COHORT_COUNT,
@@ -220,5 +221,7 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   }
   s.chronicleHead = s.chronicleCount % 4096;
 
+  // semantics, not just shapes: reject an impossible world instead of coercing it
+  validateSociety(world, s);
   return s;
 }

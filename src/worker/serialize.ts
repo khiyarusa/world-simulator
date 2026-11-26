@@ -239,6 +239,8 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
     deaths: meta.counters?.deaths ?? 0,
     migrants: meta.counters?.migrants ?? 0,
     abandonments: meta.counters?.abandonments ?? 0,
+    foodProduced: meta.counters?.foodProduced ?? 0,
+    foodConsumed: meta.counters?.foodConsumed ?? 0,
   };
 
   const state: WorldState = {
@@ -258,9 +260,13 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
 
   // Migration 1 → 2: a v1 save has no society block. It is initialised deterministically from the
   // legacy population (exact cohort split), never regenerated and never randomised.
-  if (meta.schemaVersion >= 2 && meta.society !== undefined) {
+  if (meta.schemaVersion >= 2) {
+    // A v2 save must carry its society block. Falling back to a fresh society here would silently
+    // reset a 200-year world (defect H-15).
+    if (meta.society === undefined) throw new SimError('SAVE_CORRUPT', 'v2 save is missing its society block');
     state.society = decodeSociety(state, meta.society);
   } else {
+    // genuine v1: migrate deterministically from the legacy population
     initialiseSociety(state, state.society);
   }
 

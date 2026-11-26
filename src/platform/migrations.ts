@@ -11,7 +11,12 @@ import type { WorldDoc } from './storage.ts';
 export type Migration = (doc: WorldDoc) => WorldDoc;
 
 export const MIGRATIONS: Readonly<Record<number, Migration>> = {
-  // 1 -> 2 goes here when the persisted shape changes.
+  /**
+   * 1 -> 2: the document shape is unchanged; the society block was added to the *save payload*, not to
+   * WorldDoc. The worker materialises it during deserialisation (exactly once, deterministically).
+   * This entry exists so `migrateDoc()` does not reject a valid v1 world at startup (defect H-14).
+   */
+  1: (doc) => ({ ...doc, schemaVersion: 2 }),
 };
 
 export function migrateDoc(doc: WorldDoc): WorldDoc {

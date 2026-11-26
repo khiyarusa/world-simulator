@@ -1,0 +1,45 @@
+name: balance
+
+# The Stage 3 acceptance harness: 20 deterministic seeds x 400 simulated years through the real
+# pipeline. It runs on GitHub Actions because the development machine must not do this work.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: Seeds to simulate
+        default: '20'
+      years:
+        description: Simulated years per seed
+        default: '400'
+
+permissions:
+  contents: read
+
+jobs:
+  balance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:tools
+      - name: Run harness
+        run: |
+          node --expose-gc dist-tools/tools.js balance \
+            --seeds=${{ github.event.inputs.seeds || '20' }} \
+            --years=${{ github.event.inputs.years || '400' }} \
+            --preset=medium --out=balance.json
+      - name: Acceptance summary (population band, failures)
+        run: node scripts/assert-balance.mjs balance.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: balance-${{ github.sha }}
+          path: balance.json
+          retention-days: 30

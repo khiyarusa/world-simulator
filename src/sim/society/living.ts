@@ -23,6 +23,7 @@ import {
   addStock,
   appendChronicle,
   appendEvent,
+  EVENT_CAPACITY,
   cohortOf,
   infraHas,
   populationOf,
@@ -77,7 +78,8 @@ function withRng(world: WorldState, stream: StreamId, fn: (rng: Rng) => void): v
 function fertilePm(world: WorldState, settlement: number): number {
   const s = world.settlements;
   const i = (s.y[settlement] ?? 0) * world.width + (s.x[settlement] ?? 0);
-  return 500 + (world.grids.fertility[i] ?? 0); // 0.5x .. 1.5x
+  // fertility is 0..255; the documented multiplier is 0.5x..1.5x, so scale by 4 (not by 1)
+  return 500 + (world.grids.fertility[i] ?? 0) * 4;
 }
 
 function hasWaterAccess(world: WorldState, settlement: number): boolean {
@@ -94,7 +96,8 @@ export function runClimate(world: WorldState, day: number): void {
 
   withRng(world, STREAM.CLIMATE, (rng) => {
     for (let r = 0; r < 16; r++) {
-      soc.regionPrecip[r] = rng.range(60, 149);
+      // 20..180 per-mille of normal: the <40 drought threshold must be reachable (~12 % of months)
+      soc.regionPrecip[r] = rng.range(20, 180);
       soc.regionTempAnomaly[r] = rng.range(-5, 5);
     }
   });
@@ -134,7 +137,9 @@ function flow(world: WorldState, settlement: number, res: number, milli: number)
   const total = (world.society.carry[at] ?? 0) + Math.max(0, milli);
   const units = Math.floor(total / 1000);
   world.society.carry[at] = total - units * 1000;
-  return addStock(world.society, settlement, res, units);
+  const added = addStock(world.society, settlement, res, units);
+  if (res === RES.FOOD) world.counters.foodProduced += added;
+  return added;
 }
 
 export function runProduction(world: WorldState, day: number): void {
@@ -204,6 +209,7 @@ export function runConsumption(world: WorldState, day: number): void {
     const needFood = Math.ceil((pop * RULE.foodPerPerson) / 1000);
     const eaten = Math.min(stockOf(soc, i, RES.FOOD), needFood);
     addStock(soc, i, RES.FOOD, -eaten);
+    world.counters.foodConsumed += eaten;
     const foodShortfall = needFood - eaten;
 
     const needWater = Math.ceil((pop * RULE.waterPerPerson) / 1000);
@@ -290,7 +296,8 @@ export function runDemographics(world: WorldState): void {
       remaining -= take;
     }
 
-    // starvation kills the unmet person-days directly
+    // starvation kills the unmet person-days directly, and those deaths are counted too
+    let starved = 0;
     if (starving) {
       const extra = Math.max(0, Math.floor(pop / 400));
       let left = extra;
@@ -301,12 +308,13 @@ export function runDemographics(world: WorldState): void {
         if (take > 0) addCohort(soc, i, cohort, -take);
         left -= take;
       }
+      starved = extra - left;
     }
 
     // count what actually left the cohorts, so the conservation identity is exact even for a tiny
     // settlement where the requested deaths exceed the people available
     world.counters.births += births;
-    world.counters.deaths += deaths - remaining;
+    world.counters.deaths += deaths - remaining + starved;
   }
 }
 
@@ -418,6 +426,16 @@ export function runChronicle(world: WorldState, day: number): void {
   const s = world.settlements;
   const year = Math.floor(day / DAYS_PER_YEAR);
 
+  // one pass over the ring counts the real notable events of the elapsed year, per civilization
+  const notable = new Int32Array(12);
+  for (let k = 0; k < soc.eventCount; k++) {
+    const i = (soc.eventHead - soc.eventCount + k + EVENT_CAPACITY * 2) % EVENT_CAPACITY;
+    if ((soc.eventDay[i] ?? 0) <= day - DAYS_PER_YEAR) continue;
+    if ((soc.eventSeverity[i] ?? 0) < SEVERITY.NOTABLE) continue;
+    const civ = soc.eventActorA[i] ?? 0;
+    if (civ < 12) notable[civ] = (notable[civ] ?? 0) + 1;
+  }
+
   for (let c = 0; c < world.civs.count; c++) {
     let pop = 0;
     let settlements = 0;
@@ -427,10 +445,20 @@ export function runChronicle(world: WorldState, day: number): void {
       pop += populationOf(soc, i);
       settlements++;
     }
-    appendChronicle(soc, year, c, pop, settlements, 1);
+    appendChronicle(soc, year, c, pop, settlements, notable[c] ?? 0);
   }
+}
 
-  // unbounded growth is impossible: the ring is fixed at 4096 entries
+/**
+ * One authoritative population representation (D-42): cohorts. The legacy `settlements.pop` array is a
+ * projection of them, refreshed once per tick so every existing consumer (mirror, query, checksum,
+ * save metadata) reads a value that cannot disagree with the simulation.
+ */
+export function syncPopulation(world: WorldState): void {
+  const s = world.settlements;
+  for (let i = 0; i < s.count; i++) {
+    s.pop[i] = populationOf(world.society, i);
+  }
 }
 
 /** Population conservation check used by tests and the audit phase. */

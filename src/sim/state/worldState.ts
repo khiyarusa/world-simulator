@@ -66,6 +66,9 @@ export interface WorldCounters {
   deaths: number;
   migrants: number;
   abandonments: number;
+  /** cumulative economy flows, for the balance harness and the economy audit */
+  foodProduced: number;
+  foodConsumed: number;
 }
 
 export interface GenerationReport {

@@ -51,6 +51,8 @@ export interface MetaDoc {
     deaths?: number;
     migrants?: number;
     abandonments?: number;
+    foodProduced?: number;
+    foodConsumed?: number;
   };
   rng: RngState[];
   report: GenerationReport;

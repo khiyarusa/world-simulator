@@ -9,6 +9,7 @@ import { worldChecksum } from '../sim/state/checksum.ts';
 import { generateV1 } from '../sim/world/generate.v1.ts';
 import { runDay } from '../sim/systems/pipeline.ts';
 import { civName, settlementName } from '../sim/world/names.ts';
+import { populationOf } from '../sim/society/state.ts';
 import { CAPACITY, type WorldRecipe, type WorldState } from '../sim/state/worldState.ts';
 import { deserializeWorld, encodeSnapshot, SAVE_SCHEMA_VERSION } from './serialize.ts';
 import { captureWorld } from './snapshot.ts';
@@ -161,7 +162,7 @@ function buildDelta(): MirrorDelta | null {
   const count = Math.min(s.count, CAPACITY.settlements);
   for (let i = 0; i < count; i++) {
     buffers.id[i] = i;
-    buffers.pop[i] = s.pop[i] ?? 0;
+    buffers.pop[i] = populationOf(state.society, i);
     buffers.civ[i] = s.civ[i] ?? 0;
     buffers.tier[i] = s.tier[i] ?? 0;
   }
@@ -223,7 +224,7 @@ function settlementDetail(id: number): SettlementDetail | null {
     civId,
     x,
     y,
-    pop: s.pop[id] ?? 0,
+    pop: populationOf(state.society, id),
     tier: s.tier[id] ?? 0,
     foundedDay: s.foundedDay[id] ?? 1,
     biome: state.grids.biome[i] ?? 0,

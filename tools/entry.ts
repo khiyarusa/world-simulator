@@ -17,6 +17,7 @@ import { generateV1 } from '../src/sim/world/generate.v1.ts';
 import { runDay } from '../src/sim/systems/pipeline.ts';
 import { gridsChecksum, worldChecksum } from '../src/sim/state/checksum.ts';
 import { auditHydrology } from '../src/sim/world/hydrologyCheck.ts';
+import { runBalance } from './balance.ts';
 import { seedOf } from '../src/core/seed.ts';
 import type { Preset, WorldRecipe } from '../src/sim/state/worldState.ts';
 
@@ -136,6 +137,27 @@ function hydro(): void {
   console.log(JSON.stringify({ worlds: rows.length, issues, rows }));
 }
 
+/**
+ * Balance harness entry. `--seeds`, `--years`, `--preset`, `--out`.
+ * The JSON is the evidence; the text summary is for a human reading the job log.
+ */
+function balance(): void {
+  const seeds = Number(arg('seeds', '20'));
+  const years = Number(arg('years', '400'));
+  const preset = arg('preset', 'medium') as Preset;
+  const out = arg('out', '');
+  const report = runBalance({ seeds, years, preset, peoples: 6 });
+  const json = JSON.stringify(report, null, 2);
+  if (out) writeFileSync(out, `${json}\n`, 'utf8');
+  console.log(json);
+  const failures = report.seedsDetail.filter((s) => s.invariantFailures.length > 0);
+  console.log(
+    `\nbalance: ${report.seeds} seeds x ${report.years}y in ${report.elapsedMs}ms | ` +
+      `population min ${report.population.min} median ${report.population.median} max ${report.population.max} | ` +
+      `invariant failures ${report.failures} | seeds with failures ${failures.length}`,
+  );
+}
+
 function round(v: number): number {
   return Math.round(v * 1000) / 1000;
 }
@@ -145,7 +167,8 @@ if (mode === 'golden') golden();
 else if (mode === 'determinism') determinism();
 else if (mode === 'bench') bench();
 else if (mode === 'hydro') hydro();
+else if (mode === 'balance') balance();
 else {
-  console.log('usage: tools.js <golden|determinism|bench|hydro> [--seeds=40] [--preset=medium] [--years=50]');
+  console.log('usage: tools.js <golden|determinism|bench|hydro|balance> [--seeds=20] [--years=400] [--preset=medium] [--out=file]');
   if (!existsSync(GOLDEN_PATH)) console.log(`golden fixture missing at ${GOLDEN_PATH}`);
 }

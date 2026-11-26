@@ -8,6 +8,7 @@
 import type { WorldState } from '../state/worldState.ts';
 import { DAYS_PER_MONTH, DAYS_PER_YEAR } from '../../core/clock.ts';
 import {
+  syncPopulation,
   runAgeing,
   runChronicle,
   runClimate,
@@ -80,6 +81,7 @@ export function runDay(state: WorldState): void {
     runDemographics(state);
     runAgeing(state);
   }
+  syncPopulation(state);
   state.day = day;
   state.counters.ticks += 1;
 }
