@@ -39,7 +39,7 @@ export const RULE = {
   baseDeathPm: 14,
   spoilagePm: 1, // per day
   starvationDeathPm: 900, // of unmet person-days
-  migrationMaxPm: 80, // 8 % of population per month
+  migrationMaxPm: 20, // 2 % of population per month
   tierVillage: 60,
   tierTown: 500,
   tierCity: 5_000,
@@ -347,14 +347,18 @@ export function runMigration(world: WorldState, day: number): void {
     const pop = populationOf(soc, from);
     const starving = ((soc.flags[from] ?? 0) & FLAG_STARVING) !== 0;
     const stability = soc.stability[from] ?? 0;
-    if (!starving && stability >= 25) continue;
+    // Only a genuinely failing settlement empties itself; a hungry but stable one stays and recovers,
+    // and a remnant always remains (otherwise a bad year deletes a settlement's labour base).
+    if (!starving && stability >= 20) continue;
+    if (pop <= 60) continue;
 
     // nearest living settlement with a visible food surplus and room
     let best = -1;
     let bestDist = 1e9;
     for (let to = 0; to < s.count; to++) {
       if (to === from || !isAlive(world, to)) continue;
-      if (stockOf(soc, to, RES.FOOD) < populationOf(soc, to)) continue;
+      // the destination must be able to feed the newcomers, not merely have *some* food
+      if (stockOf(soc, to, RES.FOOD) < populationOf(soc, to) * 45) continue;
       const dx = (s.x[to] ?? 0) - (s.x[from] ?? 0);
       const dy = (s.y[to] ?? 0) - (s.y[from] ?? 0);
       const dist = dx * dx + dy * dy;
