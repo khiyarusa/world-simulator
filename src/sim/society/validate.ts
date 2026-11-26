@@ -95,6 +95,11 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     if (day < 1) fail(`event ${id} has day ${day}`);
     mainIds.add(id);
   }
+  for (let k = 0; k < s.vital.count; k++) {
+    const id = s.vital.id[k] ?? 0;
+    if (id <= 0 || vitalIds.has(id)) fail(`vital event id ${id} is not unique and positive`);
+    vitalIds.add(id);
+  }
   if (s.eventCount > 0) {
     let maxId = 0;
     for (let k = 0; k < s.eventCount; k++) maxId = Math.max(maxId, s.eventId[k] ?? 0);
