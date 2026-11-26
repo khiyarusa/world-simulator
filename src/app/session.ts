@@ -3,7 +3,7 @@
  * management live in the two base classes; this file only exposes them to the UI and tests.
  */
 import type { CommandResult } from '../worker/client.ts';
-import type { HistoryFilter, LayerKind, PlayerCommand } from '../worker/protocol.ts';
+import type { EcologyMetric, HistoryFilter, LayerKind, PlayerCommand } from '../worker/protocol.ts';
 import type { PanelApi, PanelTab } from '../ui/panels.ts';
 import type { ChroniclePage, CivSummary, CivView, EconomyView, EcologyView, EventDetail, HistoryPage, InterventionInfo, LayerData, SettlementSummary, SettlementView, WorldView } from '../worker/queries.ts';
 import { SessionWorlds } from './sessionWorlds.ts';
@@ -13,16 +13,19 @@ import type { WorldDoc } from '../platform/storage.ts';
 import { initLang, t, type Lang } from '../ui/i18n.ts';
 
 export class Session extends SessionWorlds implements PanelApi {
+  private disposed = false;
+
   constructor(shell: Shell, renderer: Renderer) {
     super(shell, renderer);
     shell.attachPanels(this);
     if (this.debugEnabled) window.setInterval(() => this.renderDebug(), 500);
     window.setInterval(() => void this.autosave(), 60_000);
     window.setInterval(() => {
-      if (this.speed !== 0 && this.shell.panelsOpen) {
+      if (this.speed !== 0 && this.shell.panelsOpen && this.lastDay !== this.lastPanelDay) {
         const now = Date.now();
         if (now - this.panelRefreshAt > 4_000) {
           this.panelRefreshAt = now;
+          this.lastPanelDay = this.lastDay;
           this.shell.refreshPanels();
         }
       }
@@ -38,6 +41,7 @@ export class Session extends SessionWorlds implements PanelApi {
       onSpeed: (speed) => ref.session?.onSpeed(speed),
       onSave: () => void ref.session?.onSave(),
       onLayer: (layer) => ref.session?.onLayer(layer),
+      onLayerMetric: (metric) => ref.session?.onLayerMetric(metric),
       onOpenPanel: (tab) => ref.session?.onOpenPanel(tab),
       onChipTap: () => ref.session?.onChipTap(),
       onBackToWorlds: () => void ref.session?.onBackToWorlds(),
@@ -46,6 +50,8 @@ export class Session extends SessionWorlds implements PanelApi {
       onWorldsRename: (id, name) => void ref.session?.onWorldsRename(id, name),
       onWorldsDelete: (id) => void ref.session?.onWorldsDelete(id),
       onLanguage: (lang) => ref.session?.onLanguage(lang),
+      onPrefs: (prefs) => ref.session?.onPrefs(prefs),
+      onReplayOnboarding: () => ref.session?.onReplayOnboarding(),
     });
     const renderer = await Renderer.create(host, {
       onTap: (p) => void ref.session?.handleTap(p.x / TILE_PX, p.y / TILE_PX),
@@ -107,6 +113,18 @@ export class Session extends SessionWorlds implements PanelApi {
 
   async command(command: PlayerCommand): Promise<CommandResult> {
     return this.client.command(command);
+  }
+
+  /**
+   * Release the GPU context and the simulation worker when the page is really going away.
+   * Navigation in a WebView fires `pagehide`; backgrounding only fires `visibilitychange`, so the
+   * running app is never destroyed by a normal app switch.
+   */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.client.dispose();
+    this.renderer.destroy();
   }
 
   focusSettlement(id: number): void {
@@ -182,10 +200,12 @@ export class Session extends SessionWorlds implements PanelApi {
 
 
 
-  debugState(): { day: number; savedDay: number; settlements: number; speed: number; world: boolean; zoom: number; selected: number | null; layer: LayerKind; panel: PanelTab | null } {
+  debugState(): { day: number; savedDay: number; bakeMs: number; layerMs: number; settlements: number; speed: number; world: boolean; zoom: number; selected: number | null; layer: LayerKind; panel: PanelTab | null } {
     return {
       day: this.lastDay,
       savedDay: this.lastSavedDay,
+      bakeMs: this.lastBakeMs,
+      layerMs: this.lastLayerMs,
       settlements: this.meta?.settlements.x.length ?? 0,
       speed: this.speed,
       world: this.meta !== null,
@@ -220,8 +240,8 @@ export class Session extends SessionWorlds implements PanelApi {
     return [...this.worlds];
   }
 
-  async debugLayer(layer: LayerKind): Promise<LayerData> {
-    return this.client.query<LayerData>({ kind: 'layer', layer });
+  async debugLayer(layer: LayerKind, metric?: EcologyMetric): Promise<LayerData> {
+    return this.client.query<LayerData>({ kind: 'layer', layer, metric });
   }
 
   layerProbe(): Record<string, number | string | boolean | null> {
@@ -242,5 +262,10 @@ export class Session extends SessionWorlds implements PanelApi {
 
   showPanel(tab: PanelTab): void {
     this.shell.showPanel(tab);
+  }
+
+  /** Test/QA only: deterministic fast-forward through the real pipeline. */
+  advanceDays(days: number): void {
+    this.client.advance(days);
   }
 }

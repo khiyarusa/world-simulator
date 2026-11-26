@@ -39,6 +39,7 @@ export interface SettlementLayout {
 export interface CivLayout {
   readonly nameIdx: Uint16Array;
   readonly colorIdx: Uint8Array;
+  readonly capital: Uint16Array;
 }
 
 export interface WorldMetaMsg {
@@ -47,6 +48,12 @@ export interface WorldMetaMsg {
   readonly seaLevel: number;
   readonly recipe: WorldRecipe;
   readonly report: GenerationReport;
+  readonly day: number;
+  readonly settlements: SettlementLayout;
+  readonly civs: CivLayout;
+}
+
+export interface SettlementMetaMsg {
   readonly day: number;
   readonly settlements: SettlementLayout;
   readonly civs: CivLayout;
@@ -61,6 +68,7 @@ export interface SaveShard {
 }
 
 export type LayerKind = 'political' | 'terrain' | 'population' | 'economy' | 'ecology' | 'history';
+export type EcologyMetric = 'fertility' | 'vegetation' | 'moisture' | 'temperature';
 export const LAYER_KINDS: readonly LayerKind[] = ['political', 'terrain', 'population', 'economy', 'ecology', 'history'];
 
 export interface HistoryFilter {
@@ -89,7 +97,7 @@ export type QueryWhat =
   | { readonly kind: 'event'; readonly id: number }
   | { readonly kind: 'chronicle'; readonly fromYear?: number | undefined; readonly toYear?: number | undefined; readonly offset?: number | undefined; readonly limit?: number | undefined }
   | { readonly kind: 'decisions'; readonly limit?: number | undefined }
-  | { readonly kind: 'layer'; readonly layer: LayerKind; readonly filter?: HistoryFilter | undefined }
+  | { readonly kind: 'layer'; readonly layer: LayerKind; readonly filter?: HistoryFilter | undefined; readonly metric?: EcologyMetric | undefined }
   | { readonly kind: 'interventions' }
   | { readonly kind: 'debug' };
 
@@ -189,6 +197,8 @@ export type Cmd =
   | { readonly t: 'player'; readonly token: number; readonly command: PlayerCommand }
   | { readonly t: 'save'; readonly sid: number }
   | { readonly t: 'preview'; readonly token: number; readonly recipe: WorldRecipe }
+  /** QA / harness only: run N days synchronously through the real pipeline. */
+  | { readonly t: 'advance'; readonly days: number }
   | { readonly t: 'pause' }
   | { readonly t: 'resume' }
   | { readonly t: 'release'; readonly buffers: readonly ArrayBuffer[] }
@@ -198,6 +208,7 @@ export type WorkerMsg =
   | { readonly t: 'ready' }
   | { readonly t: 'progress'; readonly stage: string; readonly pct: number }
   | { readonly t: 'worldMeta'; readonly meta: WorldMetaMsg }
+  | { readonly t: 'settlementMeta'; readonly meta: SettlementMetaMsg }
   // Sent once per created/loaded world. Structured-cloned (a one-off ~0.5 MB copy), because
   // transferring would detach the worker's own authoritative grids.
   | { readonly t: 'terrain'; readonly width: number; readonly height: number; readonly grids: TerrainArrays }

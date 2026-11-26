@@ -15,18 +15,18 @@ import { TILE_PX, type ViewState } from '../render/app.ts';
 import { bakeTerrain } from '../render/terrainBake.ts';
 import { Labels, type LabelItem } from '../ui/labels.ts';
 import { WorkerClient, type ClientHandlers, type PreviewPayload, type TickStatsMsg } from '../worker/client.ts';
-import type { LayerKind, MirrorDelta, Speed, WorldMetaMsg } from '../worker/protocol.ts';
+import type { EcologyMetric, LayerKind, MirrorDelta, SettlementMetaMsg, Speed, WorldMetaMsg } from '../worker/protocol.ts';
 import type { Shell, WorldSummary } from '../ui/shell.ts';
 import type { LayerData, SettlementView } from '../worker/queries.ts';
-import { formatCompact, tierName } from '../ui/format.ts';
+import { fmtCompact, tierLabel } from '../ui/i18n.ts';
 import { FrameTimer, isDebugEnabled } from './debug.ts';
 import { WorldDb } from '../platform/storage.ts';
 import type { WorldDoc } from '../platform/storage.ts';
 import { t } from '../ui/i18n.ts';
+import { applyPrefs, loadPrefs, motionReduced, type UiPrefs } from '../ui/prefs.ts';
 
 const AUTOSAVE_DAYS = 90;
 const VIEW_SEND_MS = 250;
-const LABEL_MIN_ZOOM = 0.09;
 const LAYER_REFRESH_DAYS = 30;
 
 export abstract class SessionCore implements ClientHandlers {
@@ -34,6 +34,7 @@ export abstract class SessionCore implements ClientHandlers {
   protected abstract updateSaveState(): void;
   protected abstract onSpeed(speed: Speed): void;
   protected abstract renderDebug(): void;
+  protected prefs: UiPrefs = loadPrefs();
   protected readonly shell: Shell;
   protected readonly client: WorkerClient;
   protected readonly labels: Labels;
@@ -61,15 +62,22 @@ export abstract class SessionCore implements ClientHandlers {
   protected recovered = false;
   protected lastDay = 1;
   protected layer: LayerKind = 'terrain';
+  protected layerMetric: EcologyMetric = 'fertility';
   protected layerDay = -1;
   protected layerBusy = false;
   protected panelRefreshAt = 0;
+  protected lastPanelDay = -1;
+  protected lastBakeMs = 0;
+  protected lastLayerMs = 0;
 
   protected constructor(shell: Shell, renderer: Renderer) {
     this.shell = shell;
     this.renderer = renderer;
     this.labels = new Labels(shell.labelsHost);
     this.client = new WorkerClient(this);
+    applyPrefs(this.prefs);
+    this.renderer.setReducedMotion(motionReduced(this.prefs));
+    this.renderer.setLowPower(this.prefs.lowPower);
   }
 
   // ------------------------------------------------------------------ worker events
@@ -95,6 +103,16 @@ export abstract class SessionCore implements ClientHandlers {
     this.maybeMount();
   }
 
+  onSettlementMeta(meta: SettlementMetaMsg): void {
+    if (!this.meta) return;
+    this.meta = { ...this.meta, day: meta.day, settlements: meta.settlements, civs: meta.civs };
+    this.renderer.setSettlementLayout(this.meta);
+    this.buildLabels();
+    this.shell.setSummary(this.summary());
+    this.lastDay = meta.day;
+    this.shell.setDate(meta.day);
+  }
+
   protected maybeMount(): void {
     if (!this.meta || !this.pendingTerrain || !this.doc) return;
     const meta = this.meta;
@@ -102,7 +120,9 @@ export abstract class SessionCore implements ClientHandlers {
     this.pendingTerrain = null;
 
     requestAnimationFrame(() => {
+      const bakeStart = performance.now();
       const baked = bakeTerrain(terrain.grids, terrain.width, terrain.height, meta.seaLevel);
+      this.lastBakeMs = Math.round(performance.now() - bakeStart);
       this.renderer.mountWorld(meta, baked);
       this.buildLabels();
       this.shell.showWorld(this.summary());
@@ -113,15 +133,17 @@ export abstract class SessionCore implements ClientHandlers {
       this.layerDay = -1;
       this.shell.setActiveLayer('terrain');
       this.renderer.clearLayer();
+      this.shell.setPrefs(this.prefs);
       this.updateSaveState();
       this.shell.toast(
         this.recovered
           ? t('toast.recovered')
-          : t('toast.worldReady', { n: formatCompact(meta.settlements.x.length) }),
+          : t('toast.worldReady', { n: fmtCompact(meta.settlements.x.length) }),
       );
       if (this.debugEnabled) this.renderDebug();
       // a brand-new world has no generation on disk yet; persist it immediately so it appears in
       // the world list and can survive a kill
+      this.shell.startOnboarding();
       if (this.doc && this.doc.currentGen === 0) void this.autosave(true);
     });
   }
@@ -131,18 +153,20 @@ export abstract class SessionCore implements ClientHandlers {
     this.lastDay = delta.day;
     this.population = sumInt32(delta.pop, delta.count);
     this.shell.setDate(delta.day);
+    this.shell.setMapStats(this.summary());
     this.updateSaveState();
     if (this.selectedId !== null && this.shell.chipVisible) {
       const idx = delta.id.indexOf(this.selectedId);
       if (idx >= 0) {
         this.shell.showChip(
           this.nameOf(this.selectedId),
-          `${tierName(delta.tier[idx] ?? 0)} · ${formatCompact(delta.pop[idx] ?? 0)}`,
+          `${tierLabel(delta.tier[idx] ?? 0)} · ${fmtCompact(delta.pop[idx] ?? 0)}`,
         );
       }
     }
     if (delta.day - this.lastSavedDay >= AUTOSAVE_DAYS) void this.autosave();
-    if (this.layer !== 'terrain' && delta.day - this.layerDay >= LAYER_REFRESH_DAYS) {
+    const layerDays = this.prefs.lowPower ? 180 : this.layer === 'political' ? 90 : LAYER_REFRESH_DAYS;
+    if (this.layer !== 'terrain' && delta.day - this.layerDay >= layerDays) {
       void this.refreshLayer(false);
     }
   }
@@ -225,12 +249,14 @@ export abstract class SessionCore implements ClientHandlers {
   protected async tapSettlement(id: number, openPanel: boolean): Promise<void> {
     this.selectedId = id;
     this.renderer.setSelected(id);
+    this.labels.setSelected(id);
     this.client.select(id);
     try {
       const detail = await this.client.query<SettlementView | null>({ kind: 'settlement', id });
       if (detail) {
         this.selectedCivId = detail.civId;
-        this.shell.showChip(detail.name, `${tierName(detail.tier)} · ${formatCompact(detail.pop)}`);
+        this.shell.showChip(detail.name, `${tierLabel(detail.tier)} · ${fmtCompact(detail.pop)}`);
+    this.shell.notifyInteraction('settlement');
       } else {
         this.shell.showChip(this.nameOf(id), '');
       }
@@ -244,6 +270,7 @@ export abstract class SessionCore implements ClientHandlers {
   protected clearSelection(): void {
     this.selectedId = null;
     this.renderer.setSelected(null);
+    this.labels.setSelected(null);
     this.client.select(null);
     this.shell.hideChip();
     if (this.shell.panelsOpen && (this.shell.activePanel === 'settlement' || this.shell.activePanel === 'influence')) {
@@ -257,7 +284,9 @@ export abstract class SessionCore implements ClientHandlers {
       this.lastViewSent = now;
       this.client.setView(view.x / TILE_PX, view.y / TILE_PX, view.tilesWide, view.tilesHigh, view.zoom);
     }
-    this.labels.setVisible(view.zoom > LABEL_MIN_ZOOM);
+    this.labels.setZoom(view.zoom);
+    const km = Math.max(1, Math.round((54 / (view.zoom * TILE_PX)) * 3));
+    this.shell.setScale(km);
     const screen = this.renderer.app.screen;
     this.labels.update((wx, wy) => this.renderer.worldToScreen(wx, wy), screen.width, screen.height);
   }
@@ -278,6 +307,9 @@ export abstract class SessionCore implements ClientHandlers {
       });
     }
     this.labels.setItems(items);
+    const screen = this.renderer.app.screen;
+    this.labels.setZoom(this.renderer.cam.zoom);
+    this.labels.update((wx, wy) => this.renderer.worldToScreen(wx, wy), screen.width, screen.height);
   }
 
   protected nameOf(id: number): string {
@@ -311,7 +343,12 @@ export abstract class SessionCore implements ClientHandlers {
     const requested = this.layer;
     this.layerBusy = true;
     try {
-      const data = await this.client.query<LayerData>({ kind: 'layer', layer: requested });
+      const queryStart = performance.now();
+      const data = await this.client.query<LayerData>({
+        kind: 'layer',
+        layer: requested,
+        metric: requested === 'ecology' ? this.layerMetric : undefined,
+      });
       if (this.layer !== requested) return;
       this.renderer.setLayer(data, {
         width: this.meta.width,
@@ -319,6 +356,7 @@ export abstract class SessionCore implements ClientHandlers {
         seaLevel: this.meta.seaLevel,
       });
       this.layerDay = this.lastDay;
+      this.lastLayerMs = Math.round(performance.now() - queryStart);
     } catch (e) {
       this.shell.toast(`${t('toast.noLayerData')}: ${asErrorMessage(e)}`);
     } finally {

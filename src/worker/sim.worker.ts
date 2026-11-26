@@ -12,7 +12,8 @@ import { CAPACITY, type WorldRecipe, type WorldState } from '../sim/state/worldS
 import { deserializeWorld, encodeSnapshot, SAVE_SCHEMA_VERSION } from './serialize.ts';
 import { captureWorld } from './snapshot.ts';
 import { Scheduler } from './scheduler.ts';
-import { MAX_DELTA_HZ, type Cmd, type MirrorDelta,  type SaveShard, type Speed, type WorldMetaMsg, type WorkerMsg } from './protocol.ts';
+import { MirrorPool } from './mirrorPool.ts';
+import { MAX_DELTA_HZ, type Cmd, type MirrorDelta,  type SaveShard, type SettlementMetaMsg, type Speed, type WorldMetaMsg, type WorkerMsg } from './protocol.ts';
 import { runQuery, runPlayer } from './queryHandler.ts';
 
 interface WorkerScope {
@@ -26,51 +27,6 @@ const scope = globalThis as unknown as WorkerScope;
 const DELTA_INTERVAL_MS = 1000 / MAX_DELTA_HZ;
 const STATS_INTERVAL_MS = 1000;
 
-interface MirrorSet {
-  id: Uint16Array;
-  pop: Int32Array;
-  civ: Uint8Array;
-  tier: Uint8Array;
-  state: Uint8Array;
-}
-
-class MirrorPool {
-  private readonly free: MirrorSet[] = [];
-  private readonly cap = CAPACITY.settlements;
-  private inFlight = 0;
-
-  acquire(): MirrorSet | null {
-    const reused = this.free.pop();
-    if (reused) {
-      this.inFlight++;
-      return reused;
-    }
-    if (this.inFlight >= 4) return null;
-    this.inFlight++;
-    return {
-      id: new Uint16Array(this.cap),
-      pop: new Int32Array(this.cap),
-      civ: new Uint8Array(this.cap),
-      tier: new Uint8Array(this.cap),
-      state: new Uint8Array(this.cap),
-    };
-  }
-
-  release(buffers: readonly ArrayBuffer[]): void {
-    if (buffers.length !== 5) return;
-    const [idBuf, popBuf, civBuf, tierBuf, stateBuf] = buffers;
-    if (!idBuf || !popBuf || !civBuf || !tierBuf || !stateBuf) return;
-    this.inFlight = Math.max(0, this.inFlight - 1);
-    this.free.push({
-      id: new Uint16Array(idBuf),
-      pop: new Int32Array(popBuf),
-      civ: new Uint8Array(civBuf),
-      tier: new Uint8Array(tierBuf),
-      state: new Uint8Array(stateBuf),
-    });
-  }
-}
-
 let state: WorldState | null = null;
 let scheduler = new Scheduler();
 let speed: Speed = 0;
@@ -83,6 +39,9 @@ let lastStatsAt = 0;
 let pendingDelta = false;
 const tickSamples: number[] = [];
 const pool = new MirrorPool();
+let lastSettlementCount = -1;
+let lastCivCount = -1;
+let pendingAdvanceDays = 0;
 
 function post(msg: WorkerMsg, transfer?: Transferable[]): void {
   if (transfer) scope.postMessage(msg, transfer);
@@ -194,7 +153,35 @@ function buildDelta(): MirrorDelta | null {
   };
 }
 
+function settlementMeta(): SettlementMetaMsg | null {
+  if (!state) return null;
+  const s = state.settlements;
+  const c = state.civs;
+  return {
+    day: state.day,
+    settlements: {
+      x: s.x.slice(0, s.count),
+      y: s.y.slice(0, s.count),
+      nameIdx: s.nameIdx.slice(0, s.count),
+      civ: s.civ.slice(0, s.count),
+      tier: s.tier.slice(0, s.count),
+      pop: s.pop.slice(0, s.count),
+    },
+    civs: { nameIdx: c.nameIdx.slice(0, c.count), colorIdx: c.colorIdx.slice(0, c.count), capital: c.capital.slice(0, c.count) },
+  };
+}
+
+function emitSettlementMetaIfNeeded(): void {
+  if (!state) return;
+  if (state.settlements.count === lastSettlementCount && state.civs.count === lastCivCount) return;
+  lastSettlementCount = state.settlements.count;
+  lastCivCount = state.civs.count;
+  const meta = settlementMeta();
+  if (meta) post({ t: 'settlementMeta', meta });
+}
+
 function maybeEmitDelta(force = false): void {
+  emitSettlementMetaIfNeeded();
   const t = now();
   if (!force && t - lastEmitAt < DELTA_INTERVAL_MS) {
     pendingDelta = true;
@@ -229,7 +216,7 @@ function worldMeta(): WorldMetaMsg | null {
       tier: s.tier.slice(0, s.count),
       pop: s.pop.slice(0, s.count),
     },
-    civs: { nameIdx: c.nameIdx.slice(0, c.count), colorIdx: c.colorIdx.slice(0, c.count) },
+    civs: { nameIdx: c.nameIdx.slice(0, c.count), colorIdx: c.colorIdx.slice(0, c.count), capital: c.capital.slice(0, c.count) },
   };
 }
 
@@ -242,6 +229,8 @@ async function create(recipe: WorldRecipe): Promise<void> {
   state = generated;
   const meta = worldMeta();
   if (!meta) throw new SimError('INVARIANT', 'world meta unavailable after generation');
+  lastSettlementCount = -1;
+  lastCivCount = -1;
   post({ t: 'worldMeta', meta });
   post({ t: 'terrain', width: generated.width, height: generated.height, grids: generated.grids });
   maybeEmitDelta(true);
@@ -258,6 +247,8 @@ async function load(shards: readonly SaveShard[]): Promise<void> {
   state = loaded.state;
   const meta = worldMeta();
   if (!meta) throw new SimError('INVARIANT', 'world meta unavailable after load');
+  lastSettlementCount = -1;
+  lastCivCount = -1;
   post({ t: 'worldMeta', meta });
   post({ t: 'terrain', width: loaded.state.width, height: loaded.state.height, grids: loaded.state.grids });
   maybeEmitDelta(true);
@@ -295,6 +286,11 @@ async function save(sid: number): Promise<void> {
     post({ t: 'savePrepared', sid, checksum: snapshot.checksum.toString(16), bytes: total });
   } finally {
     saving = false;
+    if (pendingAdvanceDays > 0) {
+      const days = pendingAdvanceDays;
+      pendingAdvanceDays = 0;
+      runAdvance(days);
+    }
   }
 }
 
@@ -315,6 +311,16 @@ function assertRecipe(recipe: WorldRecipe): void {
     throw new SimError('GEN_INVALID', 'seed words must be integers');
   }
   if (!Number.isInteger(recipe.generatorVersion)) throw new SimError('GEN_INVALID', 'generatorVersion must be an integer');
+}
+
+function runAdvance(days: number): void {
+  if (!state) return;
+  speed = 0;
+  scheduler.setSpeed(0);
+  clearSchedule();
+  for (let i = 0; i < days; i++) runDay(state);
+  maybeEmitDelta(true);
+  maybeEmitStats();
 }
 
 function handle(cmd: Cmd): void {
@@ -393,6 +399,23 @@ function handle(cmd: Cmd): void {
       break;
     case 'view':
       break;
+    case 'advance': {
+      if (!state) {
+        notify('warn', 'NO_WORLD', 'advance requested without a world');
+        break;
+      }
+      if (!Number.isInteger(cmd.days) || cmd.days < 1 || cmd.days > 250_000) {
+        notify('error', 'PROTOCOL', `invalid advance days ${String(cmd.days)}`);
+        break;
+      }
+      if (saving) {
+        // A QA fast-forward that arrives during an autosave is queued, not dropped.
+        pendingAdvanceDays = Math.min(250_000, pendingAdvanceDays + cmd.days);
+        break;
+      }
+      runAdvance(cmd.days);
+      break;
+    }
     case 'release':
       pool.release(cmd.buffers);
       if (pendingDelta) maybeEmitDelta(true);

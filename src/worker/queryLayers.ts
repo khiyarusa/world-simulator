@@ -3,7 +3,7 @@ import type { WorldState } from '../sim/state/worldState.ts';
 import { EVENT_TYPE, INTERVENTION } from '../sim/society/state.ts';
 import { FLAG_BLIGHT, FLAG_DROUGHT, isAlive } from '../sim/society/common.ts';
 import { listInterventions } from '../sim/society/interventions.ts';
-import type { HistoryFilter, LayerKind } from './protocol.ts';
+import type { EcologyMetric, HistoryFilter, LayerKind } from './protocol.ts';
 import type { LayerArea, LayerData, LayerLine, LayerPoint } from './queryTypes.ts';
 import { settlementNameOf, civNameOf } from './queryNames.ts';
 import { queryHistory, allEvents } from './queryEvents.ts';
@@ -21,24 +21,41 @@ function densityClass(pop: number): number {
 
 /**
  * Political territory is a real projection of settlement ownership, not a second truth: each land
- * tile belongs to the civilization of the nearest living settlement within 10 tiles. The cell value
+ * tile belongs to the civilization of the nearest living settlement within 18 tiles. The cell value
  * is civ+1, so 0 means "no polity claims this land".
+ *
+ * Stage 5 replaces the O(land × settlements) scan with a deterministic 18-tile spatial bucket grid.
+ * The result is identical to `politicalCellsReference` (same distance, same lower-settlement-index
+ * tie-break); tests compare the two arrays exactly.
  */
-function politicalCells(world: WorldState): Uint8Array {
+const TERRITORY_RADIUS = 18;
+
+interface TerritoryOwner {
+  readonly index: number;
+  readonly x: number;
+  readonly y: number;
+  readonly civ: number;
+}
+
+function territoryOwners(world: WorldState): TerritoryOwner[] {
   const s = world.settlements;
-  const cells = new Uint8Array(world.width * world.height);
-  const owners: { x: number; y: number; civ: number }[] = [];
+  const owners: TerritoryOwner[] = [];
   for (let i = 0; i < s.count; i++) {
     if (!isAlive(world, i)) continue;
-    owners.push({ x: s.x[i] ?? 0, y: s.y[i] ?? 0, civ: (s.civ[i] ?? 0) + 1 });
+    owners.push({ index: i, x: s.x[i] ?? 0, y: s.y[i] ?? 0, civ: (s.civ[i] ?? 0) + 1 });
   }
-  const radius = 18;
+  return owners;
+}
+
+function politicalCellsReference(world: WorldState): Uint8Array {
+  const cells = new Uint8Array(world.width * world.height);
+  const owners = territoryOwners(world);
   for (let y = 0; y < world.height; y++) {
     for (let x = 0; x < world.width; x++) {
       const tile = y * world.width + x;
       if ((world.grids.elevation[tile] ?? 0) < world.seaLevel) continue;
       let best = -1;
-      let bestDist = radius * radius + 1;
+      let bestDist = TERRITORY_RADIUS * TERRITORY_RADIUS + 1;
       for (const owner of owners) {
         const dx = owner.x - x;
         const dy = owner.y - y;
@@ -54,17 +71,75 @@ function politicalCells(world: WorldState): Uint8Array {
   return cells;
 }
 
-function trialCells(world: WorldState, mode: 'fertility' | 'vegetation' | 'moisture'): Uint8Array {
+function politicalCells(world: WorldState): Uint8Array {
   const cells = new Uint8Array(world.width * world.height);
-  const grid = mode === 'fertility' ? world.grids.fertility : mode === 'vegetation' ? world.grids.vegetation : world.grids.moisture;
-  for (let i = 0; i < cells.length; i++) {
-    if ((world.grids.elevation[i] ?? 0) < world.seaLevel) continue;
-    cells[i] = Math.min(255, (grid[i] ?? 0) + 1);
+  const owners = territoryOwners(world);
+  if (owners.length === 0) return cells;
+  const bucket = TERRITORY_RADIUS;
+  const cols = Math.ceil(world.width / bucket);
+  const rows = Math.ceil(world.height / bucket);
+  const grid: number[][] = Array.from({ length: cols * rows }, () => []);
+  for (let i = 0; i < owners.length; i++) {
+    const owner = owners[i]!;
+    const bx = Math.floor(owner.x / bucket);
+    const by = Math.floor(owner.y / bucket);
+    grid[by * cols + bx]!.push(i);
+  }
+  const radiusSq = TERRITORY_RADIUS * TERRITORY_RADIUS;
+  for (let y = 0; y < world.height; y++) {
+    const by = Math.floor(y / bucket);
+    for (let x = 0; x < world.width; x++) {
+      const tile = y * world.width + x;
+      if ((world.grids.elevation[tile] ?? 0) < world.seaLevel) continue;
+      const bx = Math.floor(x / bucket);
+      let best = -1;
+      let bestIndex = Number.MAX_SAFE_INTEGER;
+      let bestDist = radiusSq + 1;
+      for (let oy = Math.max(0, by - 1); oy <= Math.min(rows - 1, by + 1); oy++) {
+        for (let ox = Math.max(0, bx - 1); ox <= Math.min(cols - 1, bx + 1); ox++) {
+          const list = grid[oy * cols + ox]!;
+          for (const index of list) {
+            const owner = owners[index]!;
+            const dx = owner.x - x;
+            const dy = owner.y - y;
+            const d = dx * dx + dy * dy;
+            if (d > radiusSq) continue;
+            if (d < bestDist || (d === bestDist && owner.index < bestIndex)) {
+              bestDist = d;
+              bestIndex = owner.index;
+              best = owner.civ;
+            }
+          }
+        }
+      }
+      if (best > 0) cells[tile] = best;
+    }
   }
   return cells;
 }
 
-export function queryLayer(world: WorldState, layer: LayerKind, filter?: HistoryFilter): LayerData {
+export { politicalCells, politicalCellsReference };
+
+function trialCells(world: WorldState, mode: EcologyMetric): Uint8Array {
+  const cells = new Uint8Array(world.width * world.height);
+  const grid =
+    mode === 'fertility'
+      ? world.grids.fertility
+      : mode === 'vegetation'
+        ? world.grids.vegetation
+        : mode === 'moisture'
+          ? world.grids.moisture
+          : world.grids.temperature;
+  for (let i = 0; i < cells.length; i++) {
+    if ((world.grids.elevation[i] ?? 0) < world.seaLevel) continue;
+    const raw = grid[i] ?? 0;
+    // temperature is signed °C; map −35..35 °C onto 1..255 so 0 stays "no land"
+    cells[i] = mode === 'temperature' ? Math.max(1, Math.min(255, Math.round(((raw + 35) * 255) / 70))) : Math.min(255, raw + 1);
+  }
+  return cells;
+}
+
+export function queryLayer(world: WorldState, layer: LayerKind, filter?: HistoryFilter, metric: EcologyMetric = 'fertility'): LayerData {
   const s = world.settlements;
   const points: LayerPoint[] = [];
   const lines: LayerLine[] = [];
@@ -187,9 +262,19 @@ export function queryLayer(world: WorldState, layer: LayerKind, filter?: History
       });
     }
   } else if (layer === 'ecology') {
-    cells = trialCells(world, 'fertility');
-    cells2 = trialCells(world, 'vegetation');
-    meta.metric = 'fertility';
+    cells = trialCells(world, metric);
+    cells2 = metric === 'vegetation' ? trialCells(world, 'fertility') : metric === 'fertility' ? trialCells(world, 'vegetation') : null;
+    meta.metric = metric;
+    let min = 255;
+    let max = 1;
+    for (let i = 0; i < cells.length; i++) {
+      const v = cells[i] ?? 0;
+      if (v <= 0) continue;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    meta.min = min;
+    meta.max = max;
     for (let i = 0; i < s.count; i++) {
       if (!isAlive(world, i)) continue;
       const flags = world.society.flags[i] ?? 0;
@@ -210,18 +295,31 @@ export function queryLayer(world: WorldState, layer: LayerKind, filter?: History
     }
   } else if (layer === 'history') {
     const page = queryHistory(world, filter, 0, 100);
+    // Density reduction: one pin per place (the latest most severe event) instead of a pile of
+    // overlapping pins. The history panel still lists every event; the map is an index.
+    const byPlace = new Map<number, { id: number; severity: number; type: number; label: string; count: number }>();
     for (const e of page.events) {
       if (e.place < 0) continue;
+      const current = byPlace.get(e.place);
+      const better = !current || e.severity > current.severity || (e.severity === current.severity && e.id > current.id);
+      if (better) {
+        byPlace.set(e.place, { id: e.id, severity: e.severity, type: e.type, label: e.typeName, count: (current?.count ?? 0) + 1 });
+      } else if (current) {
+        current.count++;
+      }
+    }
+    for (const [place, e] of byPlace) {
       points.push({
         id: e.id,
-        x: world.settlements.x[e.place] ?? 0,
-        y: world.settlements.y[e.place] ?? 0,
+        x: world.settlements.x[place] ?? 0,
+        y: world.settlements.y[place] ?? 0,
         value: e.severity,
         kind: e.type,
-        label: e.typeName,
+        label: e.count > 1 ? `${e.label} +${e.count - 1}` : e.label,
       });
     }
     meta.total = page.total;
+    meta.clustered = 'latest most severe event per settlement';
   }
 
   return { layer, day: world.day, width: world.width, height: world.height, cells, cells2, points, lines, areas, meta };

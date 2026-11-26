@@ -8,7 +8,7 @@ import { GENERATOR_VERSION } from '../sim/state/worldState.ts';
 import type { WorldRecipe } from '../sim/state/worldState.ts';
 import { DEFAULT_PRESET, PRESETS } from '../sim/world/presets.ts';
 import type { CreateInput, ShellHandlers } from '../ui/shell.ts';
-import type { LayerKind, Speed } from '../worker/protocol.ts';
+import type { EcologyMetric, LayerKind, Speed } from '../worker/protocol.ts';
 import type { PanelTab } from '../ui/panels.ts';
 import { loadWorld, newWorldDoc, saveWorld } from '../platform/saves.ts';
 import { migrateDoc } from '../platform/migrations.ts';
@@ -16,9 +16,29 @@ import { setLang, t, type Lang } from '../ui/i18n.ts';
 import { formatDebug } from './debug.ts';
 import { calendarOf } from '../core/clock.ts';
 import type { SaveState } from '../ui/panels.ts';
+import { applyPrefs, motionReduced, savePrefs, type UiPrefs } from '../ui/prefs.ts';
 import { SessionCore } from './sessionCore.ts';
 
 export class SessionWorlds extends SessionCore implements ShellHandlers {
+  onPrefs(prefs: UiPrefs): void {
+    this.prefs = prefs;
+    applyPrefs(prefs);
+    savePrefs(prefs);
+    this.renderer.setLowPower(prefs.lowPower);
+    this.renderer.setReducedMotion(motionReduced(prefs));
+    this.shell.setPrefs(prefs);
+  }
+
+  onReplayOnboarding(): void {
+    this.shell.startOnboarding();
+  }
+
+  onLayerMetric(metric: EcologyMetric): void {
+    this.layerMetric = metric;
+    this.shell.setLayerMetric(metric);
+    if (this.layer === 'ecology') void this.refreshLayer(true);
+  }
+
   saveState(): SaveState {
     return {
       savedDay: this.lastSavedDay,
@@ -212,12 +232,14 @@ export class SessionWorlds extends SessionCore implements ShellHandlers {
       return;
     }
     this.shell.toast(t('toast.layerChanged', { name: t(`layer.${layer}`) }));
+    this.shell.notifyInteraction('layer');
     void this.refreshLayer(true);
   }
 
   onOpenPanel(tab: PanelTab): void {
     if (!this.meta) return;
     this.shell.showPanel(tab);
+    this.shell.notifyInteraction('panel');
   }
 
   onChipTap(): void {

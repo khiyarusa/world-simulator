@@ -5,7 +5,7 @@
  * recycling is explicit (`release`) so the worker never allocates a delta per emission.
  */
 import type { CommandEffect, PlayerCommand, QueryWhat, SaveShard, Speed, WorkerMsg } from './protocol.ts';
-import type { WorldMetaMsg, MirrorDelta } from './protocol.ts';
+import type { WorldMetaMsg, MirrorDelta, SettlementMetaMsg } from './protocol.ts';
 import type { TerrainArrays } from '../core/gridTypes.ts';
 import type { WorldRecipe } from '../sim/state/worldState.ts';
 
@@ -45,6 +45,7 @@ export interface ClientHandlers {
   onReady(): void;
   onProgress(stage: string, pct: number): void;
   onMeta(meta: WorldMetaMsg): void;
+  onSettlementMeta(meta: SettlementMetaMsg): void;
   onTerrain(width: number, height: number, grids: TerrainArrays): void;
   onDelta(delta: MirrorDelta): void;
   onStats(stats: TickStatsMsg): void;
@@ -91,6 +92,10 @@ export class WorkerClient {
 
   setSpeed(speed: Speed): void {
     this.worker.postMessage({ t: 'speed', speed });
+  }
+
+  advance(days: number): void {
+    this.worker.postMessage({ t: 'advance', days });
   }
 
   pause(): void {
@@ -154,6 +159,9 @@ export class WorkerClient {
         break;
       case 'worldMeta':
         this.handlers.onMeta(msg.meta);
+        break;
+      case 'settlementMeta':
+        this.handlers.onSettlementMeta(msg.meta);
         break;
       case 'terrain':
         this.handlers.onTerrain(msg.width, msg.height, msg.grids);

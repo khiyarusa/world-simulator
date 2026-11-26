@@ -53,7 +53,7 @@ export function runQuery(state: WorldState | null, what: QueryWhat, speed: Speed
       case 'decisions':
         return { ok: true, data: queryDecisions(state, what.limit) };
       case 'layer':
-        return { ok: true, data: queryLayer(state, what.layer, what.filter) };
+        return { ok: true, data: queryLayer(state, what.layer, what.filter, what.metric) };
       case 'interventions':
         return { ok: true, data: queryInterventions(state) };
       case 'debug':

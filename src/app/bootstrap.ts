@@ -4,7 +4,7 @@
  * Nothing here decides game behaviour. A failure is shown to the player instead of a blank screen.
  */
 import { Session } from './session.ts';
-import type { HistoryFilter, LayerKind, PlayerCommand } from '../worker/protocol.ts';
+import type { EcologyMetric, HistoryFilter, LayerKind, PlayerCommand } from '../worker/protocol.ts';
 import type { CommandResult } from '../worker/client.ts';
 import type { EventDetail, HistoryPage, LayerData, WorldView } from '../worker/queries.ts';
 import type { PanelTab } from '../ui/panels.ts';
@@ -15,6 +15,8 @@ export interface WsTestApi {
   state(): {
     day: number;
     savedDay: number;
+    bakeMs: number;
+    layerMs: number;
     settlements: number;
     speed: number;
     world: boolean;
@@ -32,14 +34,16 @@ export interface WsTestApi {
   openPanel(tab: PanelTab): void;
   showEvent(id: number): void;
   setLayer(layer: LayerKind): void;
+  setLayerMetric(metric: EcologyMetric): void;
   world(): Promise<WorldView>;
   history(filter?: HistoryFilter): Promise<HistoryPage>;
   event(id: number): Promise<EventDetail | null>;
-  layer(layer: LayerKind): Promise<LayerData>;
+  layer(layer: LayerKind, metric?: EcologyMetric): Promise<LayerData>;
   command(command: PlayerCommand): Promise<CommandResult>;
   select(id: number): void;
   layerProbe(): Record<string, number | string | boolean | null>;
   manageWorlds(): Promise<void>;
+  advance(days: number): void;
 }
 
 declare global {
@@ -67,15 +71,23 @@ export async function boot(): Promise<void> {
       openPanel: (tab: PanelTab) => session.showPanel(tab),
       showEvent: (id: number) => session.openEvent(id),
       setLayer: (layer: LayerKind) => session.onLayer(layer),
+      setLayerMetric: (metric) => session.onLayerMetric(metric),
       world: () => session.queryWorld(),
       history: (filter: HistoryFilter = {}) => session.queryHistory(filter, 0, 20),
       event: (id: number) => session.queryEvent(id),
-      layer: (layer: LayerKind) => session.debugLayer(layer),
+      layer: (layer: LayerKind, metric) => session.debugLayer(layer, metric),
       command: (command: PlayerCommand) => session.debugCommand(command),
       select: (id: number) => session.selectSettlement(id),
       layerProbe: () => session.layerProbe(),
       manageWorlds: () => session.manageWorlds(),
+      advance: (days: number) => session.advanceDays(days),
     };
+
+    // Release the WebGL context and worker on real navigation/close. `persisted` means bfcache:
+    // the page will be restored, so it must keep its resources.
+    window.addEventListener('pagehide', (event) => {
+      if (!event.persisted) session.dispose();
+    });
 
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
