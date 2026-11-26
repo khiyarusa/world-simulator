@@ -23,7 +23,7 @@ for (const s of seeds) {
     `  seed ${s.seed}: pop ${s.initialPopulation} -> ${s.finalPopulation} (peak ${s.peakPopulation})  ` +
       `settlers ${s.livingSettlements}/${s.settlementsEnd}  civs ${s.civs}  ` +
       `births ${s.births} deaths ${s.deaths} (starve ${s.starvationDeaths}, plague ${s.epidemicDeaths}, war ${s.warDeaths})  ` +
-      `food ${s.foodDaysEnd}d  routes ${s.routesOpened}/${s.routesLost} kept ${s.routesEnd}  wars ${s.warsDeclared}/${s.warsEnded}  ` +
+      `food ${s.foodDaysEnd}d  land cap ${s.landCapacityAvg} (fert ${s.fertilityAvg})  routes ${s.routesOpened}/${s.routesLost} kept ${s.routesEnd}  wars ${s.warsDeclared}/${s.warsEnded}  ` +
       `events ${s.eventCount}  ` +
       `gate best str ${s.warDiagnostics.maxStrength} grief ${s.warDiagnostics.maxGrievance} ` +
       `cap ${s.warDiagnostics.maxCapacity} util ${s.warDiagnostics.maxUtility} pass ${s.warDiagnostics.passingPairs}  ` +

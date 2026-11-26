@@ -148,12 +148,12 @@ function grievanceScore(world: WorldState, a: number, b: number): number {
 /** Utility of declaring war, minus the best alternative (peace = 50 on the same scale). */
 function warMargin(world: WorldState, a: number, b: number, ratio: number, grievance: number): number {
   const soc = world.society;
-  const greed = Math.min(70, Math.floor((ratio - 1000) / 4));
-  const grievanceUtility = Math.min(50, Math.floor(grievance / 2));
+  const greed = Math.min(80, Math.floor((ratio - 1000) / 4));
+  const grievanceUtility = Math.min(50, grievance);
   const exhaustionCost = (soc.exhaustion[a] ?? 0);
   const tradeCost = treatyBetween(soc, a, b, TREATY.TRADE) ? 15 : 0;
   const allyCost = treatyBetween(soc, a, b, TREATY.ALLIANCE) ? 1000 : 0;
-  const income = Math.min(20, Math.floor(((soc.treasury[world.civs.capital[b] ?? 0] ?? 0) / 50)));
+  const income = Math.min(30, Math.floor(((soc.treasury[world.civs.capital[b] ?? 0] ?? 0) / 30)));
   const utility = Math.min(1000, greed + grievanceUtility + income);
   return Math.max(0, utility - 50 - exhaustionCost - tradeCost - allyCost);
 }

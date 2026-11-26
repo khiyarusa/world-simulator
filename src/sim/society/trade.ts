@@ -142,7 +142,7 @@ function createRoutes(world: WorldState, day: number): void {
         bestB = b;
       }
     }
-    if (bestB < 0 || bestScore < 60) continue;
+    if (bestB < 0 || bestScore < 100) continue;
     if (openRoute(world, a, bestB, day, bestScore > 1000 ? 1000 : bestScore)) {
       pairs[a * s.x.length + bestB] = 1;
       pairs[bestB * s.x.length + a] = 1;
@@ -243,7 +243,7 @@ function decayRoutes(world: WorldState, day: number): void {
     const dead = !isAlive(world, a) || !isAlive(world, b);
     const idle = (soc.routeIdle[route] ?? 0) + 1;
     soc.routeIdle[route] = idle > 255 ? 255 : idle;
-    if (!dead && idle < 24) continue;
+    if (!dead && idle < 36) continue;
 
     appendEvent(
       soc,

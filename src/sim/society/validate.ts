@@ -100,6 +100,7 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     const day = s.eventDay[k] ?? 0;
     if (day < 1) fail(`event ${id} has day ${day}`);
     mainIds.add(id);
+    allIds.add(id);
     if ((s.eventSeverity[k] ?? 0) >= 4 && !vitalIds.has(id)) {
       // every severe event must be in the vital ring too, or retention is a lie
       fail(`severe event ${id} is missing from the vital ring`);

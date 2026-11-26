@@ -32,7 +32,7 @@ import {
 /** Design constants (docs/GDD.md §6–§9). Per-mille unless stated. */
 export const RULE = {
   foodPerPerson: 1000, // milli-units per person per day (1.0 unit)
-  waterPerPerson: 2000,
+  waterPerPerson: 1200,
   fuelPerPerson: 150,
   baseBirthPm: 32, // 3.2 %/year
   baseDeathPm: 14,
@@ -163,7 +163,8 @@ export function runProduction(world: WorldState, day: number): void {
 
     // --- water: local source or a well; a dry settlement cannot sustain its people
     const waterAccess = hasWaterAccess(world, i);
-    flow(world, i, RES.WATER, Math.round(pop * (waterAccess ? 2200 : 700)));
+    // every settlement has some local water; a river, lake, well or aqueduct makes the difference
+    flow(world, i, RES.WATER, Math.round(pop * (waterAccess ? 2200 : 1400)));
 
     // --- fuel and materials from the actual resource mask at the settlement tile
     const tile = (s.y[i] ?? 0) * world.width + (s.x[i] ?? 0);

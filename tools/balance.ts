@@ -12,6 +12,7 @@ import { totalPopulation } from '../src/sim/society/living.ts';
 import { populationOf, EVENT_TYPE_NAMES, EVENT_CAPACITY, CIV_STRIDE } from '../src/sim/society/state.ts';
 import { auditSociety } from '../src/sim/society/audit.ts';
 import { applyBlight } from '../src/sim/society/ecology.ts';
+import { landCapacity } from '../src/sim/society/economy.ts';
 import { evaluateWarGate } from '../src/sim/society/war.ts';
 import { seedOf } from '../src/core/seed.ts';
 import { captureWorld } from '../src/worker/snapshot.ts';
@@ -87,6 +88,8 @@ export interface SeedReport {
   invariantFailures: string[];
   warSamples: WarSample[];
   warDiagnostics: { maxStrength: number; maxGrievance: number; maxCapacity: number; maxUtility: number; passingPairs: number };
+  landCapacityAvg: number;
+  fertilityAvg: number;
   tickP50: number;
   tickP95: number;
   tickMax: number;
@@ -365,6 +368,16 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
     for (let axis = 0; axis < 3; axis++) cultureSum[axis] = (cultureSum[axis] ?? 0) + (soc.culture[civ * 3 + axis] ?? 0);
   }
   const culture = state.civs.count > 0 ? cultureSum.map((v) => Math.round(v / state.civs.count)) : [0, 0, 0];
+  let capacitySum = 0;
+  let fertilitySum = 0;
+  let livingCount = 0;
+  for (let i = 0; i < state.settlements.count; i++) {
+    if (((soc.flags[i] ?? 0) & 1) !== 0) continue;
+    capacitySum += landCapacity(state, i);
+    const tile = (state.settlements.y[i] ?? 0) * state.width + (state.settlements.x[i] ?? 0);
+    fertilitySum += state.grids.fertility[tile] ?? 0;
+    livingCount++;
+  }
   let techsKnown = 0;
   for (let civ = 0; civ < state.civs.count; civ++) {
     for (let t = 0; t < 12; t++) techsKnown += soc.tech[civ * 12 + t] ?? 0;
@@ -433,6 +446,8 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
     invariantFailures: failures,
     warSamples,
     warDiagnostics: { maxStrength, maxGrievance, maxCapacity, maxUtility, passingPairs },
+    landCapacityAvg: livingCount > 0 ? Math.floor(capacitySum / livingCount) : 0,
+    fertilityAvg: livingCount > 0 ? Math.floor(fertilitySum / livingCount) : 0,
     tickP50: round(percentile(samples, 0.5)),
     tickP95: round(percentile(samples, 0.95)),
     tickMax: round(samples[samples.length - 1] ?? 0),
