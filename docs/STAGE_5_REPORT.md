@@ -172,9 +172,9 @@ large text and world list are visibly different. The captures are real screensho
 | Typecheck | `npx tsc --noEmit` | pass |
 | Lint | `npx eslint .` | pass |
 | Repository gates | `node scripts/check-repo.mjs` | pass |
-| Unit/integration | `npx vitest run` | **117 passed / 18 files** |
-| Browser E2E | `npx playwright test --project=chromium` | **13 passed** (8 Stage 4 + 5 Stage 5); per-test timeout 180 s because software WebGL on the 2-vCPU dev box is slower than CI |
-| Visual QA | `npx playwright test --config=playwright.visual.config.ts` | **1 scenario / 31 captures** |
+| Unit/integration | `npx vitest run` | **117 passed / 18 files** (CI 13 s; local 114 s) |
+| Browser E2E | `npx playwright test --project=chromium` | **13 passed** in the CI run (1 m 55 s); locally 13/13 with a 180 s per-test timeout because software WebGL on the 2-vCPU dev box is slower than CI |
+| Visual QA | `npx playwright test --config=playwright.visual.config.ts` | **1 scenario / 31 captures** (CI 1 m 42 s; artifact 2.35 MB) |
 | Determinism | two-process `tools.js determinism` | CI `verify` |
 | Hydrology | `tools.js hydro` | CI `verify` |
 | Balance | 20 seeds × 400 years | CI `balance` |
@@ -203,8 +203,12 @@ CI-class Linux runner, Chromium/SwiftShader; not device numbers.
 | Population/economy/ecology/history query+render at 200 | ~20–95 ms | measured through `layerMs` |
 | Tick p95 (Stage 3 authority, 400y) | 0.077–0.323 ms | unchanged simulation |
 | Raw save at year 400 | 1,158 KiB (1,185,792 B) | unchanged schema |
-| APK | **5,591,272 B (5.59 MB)** | prior Stage 4 artifact; final measured in CI |
+| APK | **5,527,922 B (5.53 MB)** | CI `android` run 45901460361 |
+| AAB (debug) | **4,743,454 B (4.74 MB)** | same run; not a signed release |
 | Bundle | index 428.7 kB / 125.3 kB gzip | after UI modules |
+| 500 y Large stress tick p95 | 0.052 ms | CI runner, 200 settlements, 12 civs |
+| 500 y Large stress save | 1,621,675 B raw / 328,882 B compressed | 81 ms; Large budget is 2.0 MB compressed |
+| 500 y Large stress heap | 6 → 78 MB | 1.5 GB leak ceiling; 0 invariant failures |
 
 No performance budget was relaxed. Device frame time, thermal drift, cold start and memory remain
 **device-pending**.
@@ -216,6 +220,9 @@ No performance budget was relaxed. Device frame time, thermal drift, cold start 
 - Schema **4** unchanged; checksum contract **v6** unchanged; four shards unchanged.
 - v1→v2→v3→v4 migrations untouched.
 - 50 round trips preserve world checksum exactly.
+- The 500-year Large stress save is 1,621,675 B raw / 328,882 B compressed, inside the documented
+  Large budget (2.0 MB compressed); the 1,200,000-byte figure is the Medium/400-year contract and was
+  not reinterpreted.
 - Settings/onboarding are `localStorage`, not world state.
 - No silent initialisation or reset was added.
 
@@ -223,9 +230,11 @@ No performance budget was relaxed. Device frame time, thermal drift, cold start 
 
 ## 8. Android artifacts
 
-CI `android` produces the debug APK and debug AAB. The size check is 25 MB. Exact links are recorded
-in §12 after the final push. The Stage 4 APK was 5.59 MB; Stage 5 adds only code/fonts and is expected
-to remain far below 25 MB.
+CI `android` run [45901460361](https://github.com/khiyarusa/world-simulator/actions/runs/45901460361)
+produced the debug APK (**5,527,922 B / 5.53 MB**) and debug AAB (**4,743,454 B / 4.74 MB**). The size
+check passed against the 25 MB budget. The APK is slightly smaller than the Stage 4 artifact because
+the broken Medium/Bold font faces were removed. The AAB is a debug bundle for release-readiness
+inspection, **not** a signed release artifact.
 
 ---
 
@@ -266,10 +275,10 @@ Do not mark these as passed. The APK/AAB are the artifacts for the user's device
 |---|---|
 | S5-A1 A23 p95 ≤33.3 ms | **PENDING** (no device) |
 | S5-A2 15-min degradation ≤25% | **PENDING** |
-| S5-A3 large 500y run, bounded memory | **PASS (CI harness)**; device memory pending |
+| S5-A3 large 500y run, bounded memory | **PASS (CI harness): 200 settlements, heap 6→78 MB, 0 invariant failures**; device memory pending |
 | S5-A4 50 save/load cycles | **PASS** (`stress.test.ts`) |
 | S5-A5 cold start ≤6 s | **PENDING** (bake measured, device pending) |
-| S5-A6 APK ≤25 MB + AAB | **PASS (CI; size pending final run)** |
+| S5-A6 APK ≤25 MB + AAB | **PASS: 5.53 MB APK, 4.74 MB debug AAB (CI run 45901460361)** |
 | S5-A7 Stage 2–4 criteria remain green | **PASS** (unit/determinism/balance/E2E) |
 | S5-A8 budgets evidenced | **PASS for CI**; device budgets pending |
 | Visual: terrain substantially improved | **PASS (software captures)** |
@@ -288,12 +297,20 @@ Do not mark these as passed. The APK/AAB are the artifacts for the user's device
 
 ## 12. CI links and final SHA
 
-Recorded after the final push:
+Implementation commit **`f09341ae563bf11b2c27be1eb9a9307731fbf9f6`** (`f09341a`), pushed to `main`
+without rewriting history. Every workflow below ran on that exact SHA and passed:
 
-- CI: **[pending final run]**
-- Android: **[pending final run]**
-- Balance: **[pending final run]**
-- Performance: **[pending final run]**
-- Final commit: **[pending final push]**
+| Workflow | Result | Run |
+|---|---|---|
+| `ci` (verify) | success — typecheck, lint, gates, 117 unit, two-process determinism, hydrology, build, 13 E2E, 31 visual captures | [45901460279](https://github.com/khiyarusa/world-simulator/actions/runs/45901460279) |
+| `android` | success — debug APK (5,527,922 B) + debug AAB (4,743,454 B), 25 MB check | [45901460361](https://github.com/khiyarusa/world-simulator/actions/runs/45901460361) |
+| `balance` | success — 20×400 Medium (0 failures) + 1×500 Large stress (0 failures, heap 78 MB) | [45901460203](https://github.com/khiyarusa/world-simulator/actions/runs/45901460203) |
+| `perf` | success — 50-year tick benchmark and budget regression check | [45901460249](https://github.com/khiyarusa/world-simulator/actions/runs/45901460249) |
 
-Visual QA artifact: `visual-qa-<sha>`; committed copies at `docs/qa/stage5/`.
+Visual QA artifact: `visual-qa-f09341ae563bf11b2c27be1eb9a9307731fbf9f6` (2,345,819 B); committed
+copies at `docs/qa/stage5/`. Balance artifact: `balance-f09341ae563bf11b2c27be1eb9a9307731fbf9f6`
+(40,037 B). Android artifact:
+`world-simulator-debug-f09341ae563bf11b2c27be1eb9a9307731fbf9f6` (9,816,017 B).
+
+This report's links and numbers are a follow-up documentation commit; the implementation SHA above is
+the code that was verified. The device gates in §9 remain **pending** and are not implied by green CI.

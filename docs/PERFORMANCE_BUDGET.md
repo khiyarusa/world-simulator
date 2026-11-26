@@ -319,8 +319,12 @@ CI-class Linux runner, Chromium/SwiftShader. These are software measurements, no
 | Selection redraw | on selection/zoom only | removed per-frame Graphics rebuild |
 | Panel refresh | ≤ every 4 s and only if the day changed | no idle query |
 | Tick p95 (400 y) | 0.323 ms | unchanged simulation authority |
-| Raw save (400 y) | 1,158 KiB | < 1,200,000 B |
-| APK (Stage 4 measured) | 5.59 MB | < 25 MB |
+| Raw save (400 y Medium) | 1,158 KiB | < 1,200,000 B |
+| 500 y Large tick p95 | 0.052 ms | CI run 45901460203; 200 settlements, 12 civs |
+| 500 y Large save | 1.62 MB raw / 0.33 MB compressed, 81 ms | Large budget 2.0 MB compressed (SAVE_AND_DATA_MODEL §4) |
+| 500 y Large heap | 6 → 78 MB | 1.5 GB leak ceiling in `scripts/assert-stress.mjs` |
+| APK (CI, Stage 5) | 5,527,922 B (5.53 MB) | < 25 MB; run 45901460361 |
+| AAB (debug, CI) | 4,743,454 B (4.74 MB) | release-readiness artifact, not signed |
 | Bundle | index 428.7 kB / 125.3 kB gzip | + UI modules |
 
 New hard design rules:
