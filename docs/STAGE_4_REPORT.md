@@ -102,7 +102,7 @@ them. Schema 2/3 blocks decode with the new rings empty; a schema-4 block missin
 | Population at year 200 (1 seed) | 187,647 (in 150k–800k band) | same |
 | Invariant failures | **0** | same |
 | Web bundle | `index` 402.7 kB / 119.2 kB gzip; worker 141.9 kB | `npm run build` |
-| Debug APK | **5,229,380 bytes (5.23 MB)** | CI `android` artifact |
+| Debug APK | **5,591,272 bytes (5.59 MB)** | CI `android` artifact (`app-debug.apk`) |
 | Font weight | 152 KB (3 × WOFF2) + 4.4 KB licence | `public/fonts/` |
 
 The Stage 3 20-seed balance remains the balance authority; Stage 4 did not change simulation rules
@@ -177,7 +177,8 @@ Code commit: `3ef8ff947f652d208f88c115bc7df39f237f7b88`. All four workflows ran 
 
 Artifacts:
 
-- debug APK `world-simulator-debug-3ef8ff9…` — 5,229,380 bytes;
+- debug APK `world-simulator-debug-3ef8ff9…` — archive 5,229,379 bytes; inside it `app-debug.apk` is
+  5,591,272 bytes;
 - visual QA `visual-qa-3ef8ff9…` — 975,049 bytes; committed copies in `docs/qa/stage4/` with
   [`README.md`](qa/stage4/README.md);
 - CI fixtures `ci-fixtures-3ef8ff9…`.
