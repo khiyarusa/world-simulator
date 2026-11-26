@@ -91,6 +91,8 @@ export interface SeedReport {
   fertilityAvg: number;
   farmerSharePm: number;
   landPmAvg: number;
+  medianFoodDays: number;
+  starvingSharePm: number;
   tickP50: number;
   tickP95: number;
   tickMax: number;
@@ -330,6 +332,8 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
   let livingCount = 0;
   let farmerShareSum = 0;
   let landPmSum = 0;
+  let starving = 0;
+  const settlementDays: number[] = [];
   for (let i = 0; i < state.settlements.count; i++) {
     if (((soc.flags[i] ?? 0) & 1) !== 0) continue;
     capacitySum += landCapacity(state, i);
@@ -338,8 +342,12 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
     const pop = Math.max(1, populationOf(soc, i));
     farmerShareSum += Math.floor(((soc.cohorts[i * 8 + 2] ?? 0) + Math.floor((soc.cohorts[i * 8 + 1] ?? 0) / 2)) * 1000 / pop);
     landPmSum += Math.min(1000, Math.max(300, Math.floor((landCapacity(state, i) * 1000) / pop)));
+    if (((soc.flags[i] ?? 0) & 2) !== 0) starving++;
+    settlementDays.push(Math.floor((soc.stock[i * 6] ?? 0) / pop));
     livingCount++;
   }
+  settlementDays.sort((a, b) => a - b);
+  const medianFoodDays = settlementDays.length > 0 ? settlementDays[Math.floor(settlementDays.length / 2)] ?? 0 : 0;
   let techsKnown = 0;
   for (let civ = 0; civ < state.civs.count; civ++) {
     for (let t = 0; t < 12; t++) techsKnown += soc.tech[civ * 12 + t] ?? 0;
@@ -413,6 +421,8 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
     fertilityAvg: livingCount > 0 ? Math.floor(fertilitySum / livingCount) : 0,
     farmerSharePm: livingCount > 0 ? Math.floor(farmerShareSum / livingCount) : 0,
     landPmAvg: livingCount > 0 ? Math.floor(landPmSum / livingCount) : 0,
+    medianFoodDays,
+    starvingSharePm: livingCount > 0 ? Math.floor((starving * 1000) / livingCount) : 0,
     tickP50: round(percentile(samples, 0.5)),
     tickP95: round(percentile(samples, 0.95)),
     tickMax: round(samples[samples.length - 1] ?? 0),

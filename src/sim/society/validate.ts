@@ -87,6 +87,15 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
   }
   const mainIds = new Set<number>();
   const cap = s.eventId.length;
+  let retentionFloor = Number.MAX_SAFE_INTEGER;
+  if (s.eventCount > 0) {
+    const oldest = (s.eventHead - s.eventCount + cap * 2) % cap;
+    retentionFloor = Math.min(retentionFloor, s.eventId[oldest] ?? 0);
+  }
+  if (s.vital.count > 0) {
+    const oldestVital = (s.vital.head - s.vital.count + s.vital.id.length * 2) % s.vital.id.length;
+    retentionFloor = Math.min(retentionFloor, s.vital.id[oldestVital] ?? 0);
+  }
   for (let n = 0; n < s.eventCount; n++) {
     // logical order (oldest first), not physical index order: after a wrap the array starts mid-history
     const k = (s.eventHead - s.eventCount + n + cap * 2) % cap;
@@ -94,7 +103,10 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     if (id <= 0 || mainIds.has(id)) fail(`event id ${id} is not unique and positive`);
     const cause = s.eventCause[k] ?? 0;
     if (cause !== 0 && cause !== -1) {
-      if (!allIds.has(cause)) fail(`event ${id} references a cause that does not exist (${cause})`);
+      // a cause older than the retention floor was evicted by the documented ring budget, not lost
+      if (!allIds.has(cause) && cause >= retentionFloor) {
+        fail(`event ${id} references a cause that does not exist (${cause})`);
+      }
       if (cause >= id) fail(`event ${id} references a later cause (${cause})`);
     }
     const day = s.eventDay[k] ?? 0;
