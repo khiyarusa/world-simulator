@@ -130,3 +130,62 @@ budget of this session ran out, not because they were judged unimportant.
    each with an event and a decision record, then the four arc detectors.
 
 Only after those exist can S3-A2/A3/A5 be evaluated at all.
+
+---
+
+# STAGE 3.2 UPDATE (2026-11-26)
+
+**Commit:** `cf9262b` · Balance run: [45765394962](https://github.com/khiyarusa/world-simulator/actions/runs/45765394962) (superseded by the run on `cf9262b`)
+
+## What changed
+
+1. **One authoritative population (D-42).** Cohorts are the truth; `settlements.pop` is a per-tick
+   projection refreshed by `syncPopulation()`, and the worker mirror and settlement query read the
+   cohorts directly. The map, the panel and the simulation can no longer disagree.
+2. **Correctness fixes that the audit named:** the drought threshold is now reachable (precipitation
+   20–180 ‰), fertility is scaled to its documented 0.7–1.5× range, starvation deaths are counted in
+   the death counter, the chronicle counts real notable events instead of a constant, a real 1→2
+   document migration stops startup from rejecting v1 worlds, a v2 save without its society block is
+   corruption rather than a fresh society, and `decodeSociety` validates semantics (cohort sums, caps,
+   shares, culture/relation bounds, technology, event ids and cause references).
+3. **Checksum contract v4** covers occupation, capacities, carries, culture, technology, relations,
+   climate and the history rings.
+4. **Balance harness (WP C).** `tools/balance.ts` + `balance.yml` run 20 seeds × 400 years through the
+   real pipeline, audit invariants every simulated year, and publish JSON. This is the evidence source
+   for every number below; it found three real economy defects in its first three runs.
+5. **Economy clamps removed in favour of mechanism:** land carrying capacity (arable capacity limits
+   yield per farmer), reserve-aware fertility, founder settlements that transfer people and stores, and
+   migration that cannot delete a settlement's labour base.
+
+## Measured result (20 seeds × 400 years, Medium, ~11 s on CI)
+
+| Metric | Value |
+|---|---|
+| Invariant failures | **0** (20/20 seeds clean) |
+| Population min / median / max | **1,388 / 2,375 / 3,138** |
+| Settlements at year 400 | 16 – 60 |
+| Food reserve at year 400 | 16 – 26 days |
+| Births vs deaths | births exceed deaths in every seed |
+| Tick p95 | 0.002 – 0.007 ms |
+
+## Acceptance gates after this work
+
+| Gate | Status |
+|---|---|
+| S3-A1 20×400 stability | **PASS** — 20/20 seeds, zero invariant failures, zero exceptions |
+| S3-A2 narrative arcs | **NOT MET** — no arc detectors; trade and war do not exist |
+| S3-A3 population 150k–800k | **FAIL** — 1.4k–3.1k measured. The mechanism (found, grow, split) works but the scale does not; the next lever is a measured calibration of per-settlement capacity and founding seeding, not a clamp |
+| S3-A4 sev-4 causes | **PARTIAL** — true for the events that exist |
+| S3-A5 explainable wars | **NOT MET** — no war system |
+| S3-A6 LOD equivalence | **NOT MEASURED** |
+| S3-A7 save size/load | **NOT MEASURED** |
+| S3-A8 p95 ≤ 3 ms | **INDICATIVE** — 0.002–0.007 ms at 16–60 settlements; 200 settlements not yet profiled |
+
+**Stage 3 remains incomplete: 1 of 8 gates verified.**
+
+## Next levers, in order
+
+1. Calibrate scale: seed daughters with 90 days of food and a larger transfer, then re-run the harness
+   until the 150k band is reached *without* touching mortality. Expect two or three measured iterations.
+2. Trade → infrastructure → military → diplomacy → war, each with a decision record and an event.
+3. Arc detectors and the war-gate sampler, then the LOD A/B run.

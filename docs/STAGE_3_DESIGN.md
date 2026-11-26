@@ -80,7 +80,7 @@ contain player input.
 | `terrain` | unchanged 12-grid binary block |
 | `settlements` | base identity (position, civ, tier, name, foundedDay) — unchanged layout |
 | `civs` | capital, colour, name |
-| `society` | **new**: cohorts, stocks, caps, treasury, health, stability, literacy, infrastructure, culture, technology, relations, routes, wars, event ring, chronicle, decision ring |
+| *(meta)* | the society block travels **inside the meta shard** (D-44): the four-shard set is unchanged, so the Stage 2.1 completeness and recovery rules stay valid for every historical save |
 
 v2 is a superset of v1; `SHARD_NAMES` gains `society`, so a v2 generation without it is invalid (D-36
 still applies) and a v1 generation is recognised by its four-shard set plus `schemaVersion: 1`.
