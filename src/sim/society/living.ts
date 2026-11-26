@@ -34,7 +34,7 @@ export const RULE = {
   foodPerPerson: 1000, // milli-units per person per day (1.0 unit)
   waterPerPerson: 1200,
   fuelPerPerson: 150,
-  baseBirthPm: 34, // 3.4 %/year
+  baseBirthPm: 36, // 3.6 %/year
   baseDeathPm: 12,
   spoilagePer10k: 3, // 0.3 per-mille per day (~10 %/year); 1 per-mille lost 30 %/year
   starvationDeathPm: 900, // of unmet person-days
@@ -152,9 +152,9 @@ export function runProduction(world: WorldState, day: number): void {
     const civ = s.civ[i] ?? 0;
     const agriTech = (soc.tech[civ * 12] ?? 0) + (soc.tech[civ * 12 + 1] ?? 0) + (soc.tech[civ * 12 + 2] ?? 0);
     const indTech = (soc.tech[civ * 12 + 3] ?? 0) + (soc.tech[civ * 12 + 4] ?? 0) + (soc.tech[civ * 12 + 5] ?? 0);
-    let milli = farmers * 8000;
+    let milli = farmers * 10000;
     milli = mulDiv(milli, seasonal, 1000);
-    milli = mulDiv(milli, drought ? 400 : 1000, 1000);
+    milli = mulDiv(milli, drought ? 500 : 1000, 1000);
     milli = mulDiv(milli, fertilePm(world, i), 1000);
     milli = mulDiv(milli, landPm, 1000);
     milli = mulDiv(milli, 1000 + agriTech * 80, 1000);
@@ -228,8 +228,8 @@ export function runConsumption(world: WorldState, day: number): void {
     const densityPm = pop > 2500 ? 120 : 0;
     let health = soc.health[i] ?? 70;
     if (foodShortfall > 0) health -= Math.min(4, 1 + Math.floor(foodShortfall / Math.max(1, pop / 10)));
-    else health += 1;
-    if (waterShortfall > 0) health -= Math.min(3, 1 + Math.floor(waterShortfall / Math.max(1, pop)));
+    else health += 2;
+    if (waterShortfall > 0) health -= Math.min(2, 1 + Math.floor(waterShortfall / Math.max(1, pop)));
     if (fuelShortfall > 0) health -= 1;
     health -= Math.floor(densityPm / 60);
     if (infraHas(soc, i, INFRA.indexOf('well'))) health += 1;

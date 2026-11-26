@@ -16,6 +16,7 @@ import { captureWorld } from '../src/worker/snapshot.ts';
 import { encodeSnapshot } from '../src/worker/serialize.ts';
 import { detectArcs, type ArcEvent, type ArcResult, type ArcTrace, type ArcYear } from './arcs.ts';
 import type { Preset, WorldState } from '../src/sim/state/worldState.ts';
+import { avgOf, foodDays, gridSum, heapMb, percentile, pick, round } from './balanceUtil.ts';
 
 export interface WarSample {
   a: number;
@@ -88,6 +89,8 @@ export interface SeedReport {
   warDiagnostics: { maxStrength: number; maxGrievance: number; maxCapacity: number; maxUtility: number; passingPairs: number };
   landCapacityAvg: number;
   fertilityAvg: number;
+  farmerSharePm: number;
+  landPmAvg: number;
   tickP50: number;
   tickP95: number;
   tickMax: number;
@@ -122,50 +125,6 @@ export interface BalanceOptions {
   onSeed?: (report: SeedReport) => void;
 }
 
-function pick(seedLo: number): number {
-  return (seedLo * 2654435761 + 0x9e3779b9) >>> 0;
-}
-
-function percentile(sorted: number[], p: number): number {
-  if (sorted.length === 0) return 0;
-  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
-}
-
-function round(v: number): number {
-  return Math.round(v * 1000) / 1000;
-}
-
-function heapMb(): number {
-  if (typeof process === 'undefined' || typeof process.memoryUsage !== 'function') return 0;
-  return Math.round(process.memoryUsage().heapUsed / 1048576);
-}
-
-function gridSum(world: WorldState, key: 'vegetation' | 'fertility'): number {
-  let sum = 0;
-  const grid = world.grids[key];
-  for (let i = 0; i < grid.length; i++) sum += grid[i] ?? 0;
-  return sum;
-}
-
-function avgOf(values: Uint8Array, count: number): number {
-  if (count === 0) return 0;
-  let sum = 0;
-  for (let i = 0; i < count; i++) sum += values[i] ?? 0;
-  return Math.floor(sum / count);
-}
-
-function foodDays(world: WorldState): number {
-  let pop = 0;
-  let food = 0;
-  for (let i = 0; i < world.settlements.count; i++) {
-    if (((world.society.flags[i] ?? 0) & 1) !== 0) continue;
-    pop += populationOf(world.society, i);
-    food += world.society.stock[i * 6] ?? 0;
-  }
-  return pop > 0 ? Math.floor(food / pop) : 0;
-}
-
-/** Append every event emitted since `lastId` (oldest first) to `out`. */
 function collectEvents(world: WorldState, lastId: number, out: ArcEvent[]): number {
   const soc = world.society;
   let newest = lastId;
@@ -369,11 +328,16 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
   let capacitySum = 0;
   let fertilitySum = 0;
   let livingCount = 0;
+  let farmerShareSum = 0;
+  let landPmSum = 0;
   for (let i = 0; i < state.settlements.count; i++) {
     if (((soc.flags[i] ?? 0) & 1) !== 0) continue;
     capacitySum += landCapacity(state, i);
     const tile = (state.settlements.y[i] ?? 0) * state.width + (state.settlements.x[i] ?? 0);
     fertilitySum += state.grids.fertility[tile] ?? 0;
+    const pop = Math.max(1, populationOf(soc, i));
+    farmerShareSum += Math.floor(((soc.cohorts[i * 8 + 2] ?? 0) + Math.floor((soc.cohorts[i * 8 + 1] ?? 0) / 2)) * 1000 / pop);
+    landPmSum += Math.min(1000, Math.max(300, Math.floor((landCapacity(state, i) * 1000) / pop)));
     livingCount++;
   }
   let techsKnown = 0;
@@ -447,6 +411,8 @@ async function runSeed(seedLo: number, options: BalanceOptions): Promise<SeedRep
     warDiagnostics: { maxStrength, maxGrievance, maxCapacity, maxUtility, passingPairs },
     landCapacityAvg: livingCount > 0 ? Math.floor(capacitySum / livingCount) : 0,
     fertilityAvg: livingCount > 0 ? Math.floor(fertilitySum / livingCount) : 0,
+    farmerSharePm: livingCount > 0 ? Math.floor(farmerShareSum / livingCount) : 0,
+    landPmAvg: livingCount > 0 ? Math.floor(landPmSum / livingCount) : 0,
     tickP50: round(percentile(samples, 0.5)),
     tickP95: round(percentile(samples, 0.95)),
     tickMax: round(samples[samples.length - 1] ?? 0),
