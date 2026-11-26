@@ -22,7 +22,7 @@ import {
   stockOf,
 } from './state.ts';
 import { FLAG_RUINED, isAlive } from './common.ts';
-import { recalcCaps } from './economy.ts';
+import { landCapacity, recalcCaps } from './economy.ts';
 import { syncPopulation } from './living.ts';
 
 /** The infrastructure a tier requires, as a predicate over the settlement's built bits. */
@@ -109,7 +109,7 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
   s.count = index + 1;
 
   // move 40 % of the parent (capped), youngest cohorts first so the daughter can grow
-  const target = Math.min(500, Math.floor(populationOf(soc, parent) * 400 / 1000));
+  const target = Math.min(350, Math.floor(populationOf(soc, parent) * 350 / 1000));
   let left = target;
   for (const c of [COHORT.YOUTH, COHORT.CHILDREN, COHORT.FARMERS, COHORT.EXTRACTORS, COHORT.CRAFTERS]) {
     if (left <= 0) break;
@@ -126,8 +126,11 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
     return;
   }
   recalcCaps(world);
-  // seed the daughter from the parent's stores (a transfer, so the world total is unchanged)
-  const food = Math.min(stockOf(soc, parent, RES.FOOD), moved * 55); // fits the no-granary cap
+  // seed the daughter proportionally from the parent's stores, so both sides keep the same reserve
+  // (a transfer, so the world total is unchanged and neither is silently starved by the split)
+  const parentPop = populationOf(soc, parent);
+  const share = parentPop > 0 ? Math.floor((moved * 1000) / parentPop) : 0;
+  const food = Math.min(stockOf(soc, parent, RES.FOOD), Math.floor((stockOf(soc, parent, RES.FOOD) * share) / 1000));
   addStock(soc, parent, RES.FOOD, -food);
   addStock(soc, index, RES.FOOD, food);
   world.counters.settlementsFounded += 1;
@@ -170,11 +173,14 @@ export function runGrowth(world: WorldState, day: number): void {
     if (foodDays >= 30) soc.surplusYears[i] = Math.min(255, (soc.surplusYears[i] ?? 0) + 1);
     else soc.surplusYears[i] = 0;
 
-    // --- founding: prosperity plus room founds a daughter settlement (transfer, not creation)
+    // --- founding: a settlement approaching its own arable capacity sends settlers out
+    // (a transfer, not creation); crowding is the cause, not an arbitrary population number
+    const crowded = pop * 1000 >= landCapacity(world, i) * 700;
     if (
-      pop >= 900 &&
-      (soc.stability[i] ?? 0) >= 55 &&
-      foodDays > 20 &&
+      pop >= 300 &&
+      crowded &&
+      (soc.stability[i] ?? 0) >= 45 &&
+      foodDays >= 10 &&
       foodDays < 120 && // a settlement that hoards for a century is not the one that expands
       s.count < CAPACITY.settlements &&
       day % 60 === 0

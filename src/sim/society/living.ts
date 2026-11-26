@@ -49,6 +49,7 @@ export const RULE = {
 const SEASON_YIELD_PM = [500, 800, 1100, 1000] as const;
 
 import { FLAG_DROUGHT, FLAG_RUINED, FLAG_STARVING, isAlive } from './common.ts';
+import { landCapacity } from './economy.ts';
 import { withStream } from './streams.ts';
 
 export { isAlive } from './common.ts';
@@ -144,7 +145,7 @@ export function runProduction(world: WorldState, day: number): void {
 
     // --- agriculture: labour x land. Yield per farmer falls as the settlement approaches the arable
     // capacity of its own tiles, which is what gives a settlement a carrying capacity at all.
-    const landCap = 220 + (world.grids.fertility[(s.y[i] ?? 0) * world.width + (s.x[i] ?? 0)] ?? 0) * 20;
+    const landCap = landCapacity(world, i);
     const landPm = pop > 0 ? Math.min(1000, Math.max(300, Math.floor((landCap * 1000) / pop))) : 1000;
     const civ = s.civ[i] ?? 0;
     const agriTech = (soc.tech[civ * 12] ?? 0) + (soc.tech[civ * 12 + 1] ?? 0) + (soc.tech[civ * 12 + 2] ?? 0);

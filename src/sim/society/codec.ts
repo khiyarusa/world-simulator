@@ -47,6 +47,7 @@ export interface SocietyDoc {
   price: Numbers;
   occupier: Numbers;
   surplusYears: Numbers;
+  lastEpidemicDay: Numbers;
   culture: Numbers;
   tech: Numbers;
   techProgress: Numbers;
@@ -193,6 +194,7 @@ export function encodeSociety(world: WorldState): SocietyDoc {
     price: arr(s.price, sc * RES_COUNT),
     occupier: arr(s.occupier, sc),
     surplusYears: arr(s.surplusYears, sc),
+    lastEpidemicDay: arr(s.lastEpidemicDay, sc),
     culture: arr(s.culture, CIV_STRIDE * 3),
     tech: arr(s.tech, CIV_STRIDE * 12),
     techProgress: arr(s.techProgress, CIV_STRIDE * 12),
@@ -327,6 +329,7 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   copy(s.price, optionalArray(d.price, 'price', sc * RES_COUNT, legacy, 1000));
   copy(s.occupier, optionalArray(d.occupier, 'occupier', sc, legacy, 0));
   copy(s.surplusYears, optionalArray(d.surplusYears, 'surplusYears', sc, legacy, 0));
+  copy(s.lastEpidemicDay, optionalArray(d.lastEpidemicDay, 'lastEpidemicDay', sc, legacy, 0));
   copy(s.culture, civArray(d.culture, 'culture', 3, cc, legacy, 0));
   copy(s.tech, civArray(d.tech, 'tech', 12, cc, legacy, 0));
   copy(s.techProgress, civArray(d.techProgress, 'techProgress', 12, cc, legacy, 0));

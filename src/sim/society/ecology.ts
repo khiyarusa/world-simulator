@@ -72,8 +72,11 @@ export function runEcology(world: WorldState, day: number): void {
     const pop = populationOf(soc, i);
     const health = soc.health[i] ?? 60;
     const famine = soc.lastFamineEvent[i] ?? 0;
-    if (pop >= 120 && health < 45) {
-      const risk = (45 - health) * 2 + (pop > 2_000 ? 20 : 0);
+    const lastEpidemic = soc.lastEpidemicDay[i] ?? 0;
+    if (pop >= 120 && health < 45 && day - lastEpidemic >= 720) {
+      // a recovered population keeps its immunity for two years; without that window an outbreak
+      // feeds its own risk and deletes the settlement
+      const risk = Math.min(60, (45 - health) * 2 + (pop > 2_000 ? 20 : 0));
       let outbreak = false;
       withStream(world, STREAM.EPIDEMIC, (rng) => {
         outbreak = rng.chance(risk);
@@ -84,6 +87,7 @@ export function runEcology(world: WorldState, day: number): void {
         world.counters.epidemicDeaths += deaths;
         soc.health[i] = Math.max(0, health - 10);
         soc.stability[i] = Math.max(0, (soc.stability[i] ?? 60) - 6);
+        soc.lastEpidemicDay[i] = day;
         appendEvent(
           soc,
           day,

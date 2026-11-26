@@ -9,6 +9,17 @@ import type { WorldState } from '../state/worldState.ts';
 import { RES, RES_COUNT, addStock, infraHas, populationOf, stockOf, INFRA } from './state.ts';
 import { isAlive } from './common.ts';
 
+/**
+ * The arable capacity of a settlement's own tile: fertility is 0..255, and the land can feed
+ * `220 + 20 x fertility` people at full labour productivity. One source of truth for agriculture and
+ * for the founding decision that relieves a settlement approaching this limit.
+ */
+export function landCapacity(world: WorldState, settlement: number): number {
+  const s = world.settlements;
+  const tile = (s.y[settlement] ?? 0) * world.width + (s.x[settlement] ?? 0);
+  return 220 + (world.grids.fertility[tile] ?? 0) * 20;
+}
+
 /** Days of consumption a settlement can store per resource, before infrastructure. */
 const CAP_DAYS = [60, 20, 20, 0, 0, 0] as const;
 /** Stock target used by the price curve, in days of consumption. */

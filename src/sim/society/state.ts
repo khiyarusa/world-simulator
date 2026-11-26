@@ -181,6 +181,8 @@ export interface SocietyState {
   occupier: Uint8Array;
   /** consecutive months with a food surplus; tier promotion needs two years of it (GDD §7.1) */
   surplusYears: Uint8Array;
+  /** day of the last epidemic in this settlement; a population needs time to regain immunity */
+  lastEpidemicDay: Int32Array;
 
   /** civs × 3 culture axes, -100..100 */
   culture: Int8Array;
@@ -302,6 +304,7 @@ export function allocateSociety(): SocietyState {
     price: new Uint16Array(s * RES_COUNT).fill(1000),
     occupier: new Uint8Array(s),
     surplusYears: new Uint8Array(s),
+    lastEpidemicDay: new Int32Array(s),
 
     culture: new Int8Array(c * 3),
     tech: new Uint8Array(c * 12),

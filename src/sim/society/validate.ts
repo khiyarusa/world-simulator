@@ -77,24 +77,26 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     }
   }
 
-  const ids = new Set<number>();
+  const allIds = new Set<number>();
   const vitalIds = new Set<number>();
   for (let k = 0; k < s.vital.count; k++) {
     const id = s.vital.id[k] ?? 0;
-    if (id <= 0) fail(`vital event id ${id} is not positive`);
-    ids.add(id);
+    if (id <= 0 || vitalIds.has(id)) fail(`vital event id ${id} is not unique and positive`);
+    allIds.add(id);
     vitalIds.add(id);
   }
+  const mainIds = new Set<number>();
   for (let k = 0; k < s.eventCount; k++) {
     const id = s.eventId[k] ?? 0;
-    if (id <= 0 || ids.has(id)) fail(`event id ${id} is not unique and positive`);
+    if (id <= 0 || mainIds.has(id)) fail(`event id ${id} is not unique and positive`);
     const cause = s.eventCause[k] ?? 0;
-    if (cause !== 0 && cause !== -1 && !ids.has(cause)) {
-      fail(`event ${id} references a cause that does not exist yet (${cause})`);
+    if (cause !== 0 && cause !== -1) {
+      if (!allIds.has(cause)) fail(`event ${id} references a cause that does not exist (${cause})`);
+      if (cause >= id) fail(`event ${id} references a later cause (${cause})`);
     }
     const day = s.eventDay[k] ?? 0;
     if (day < 1) fail(`event ${id} has day ${day}`);
-    ids.add(id);
+    mainIds.add(id);
     if ((s.eventSeverity[k] ?? 0) >= 4 && !vitalIds.has(id)) {
       // every severe event must be in the vital ring too, or retention is a lie
       fail(`severe event ${id} is missing from the vital ring`);
