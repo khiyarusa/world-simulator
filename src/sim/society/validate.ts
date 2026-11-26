@@ -86,7 +86,10 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     vitalIds.add(id);
   }
   const mainIds = new Set<number>();
-  for (let k = 0; k < s.eventCount; k++) {
+  const cap = s.eventId.length;
+  for (let n = 0; n < s.eventCount; n++) {
+    // logical order (oldest first), not physical index order: after a wrap the array starts mid-history
+    const k = (s.eventHead - s.eventCount + n + cap * 2) % cap;
     const id = s.eventId[k] ?? 0;
     if (id <= 0 || mainIds.has(id)) fail(`event id ${id} is not unique and positive`);
     const cause = s.eventCause[k] ?? 0;

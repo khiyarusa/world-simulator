@@ -109,6 +109,7 @@ export function runClimate(world: WorldState, day: number): void {
       if ((flag & FLAG_DROUGHT) === 0) {
         soc.flags[i] = flag | FLAG_DROUGHT;
         soc.lastDroughtEvent[i] = appendEvent(world.society, day, EVENT_TYPE.DROUGHT, SEVERITY.NOTABLE, i, s.civ[i] ?? 0, 0, soc.regionDroughtMonths[region] ?? 0, 0);
+        soc.historyDay[i * 2] = day;
       }
     } else if ((flag & FLAG_DROUGHT) !== 0) {
       soc.flags[i] = flag & ~FLAG_DROUGHT;
@@ -250,9 +251,10 @@ export function runConsumption(world: WorldState, day: number): void {
     const flags = soc.flags[i] ?? 0;
     if (starving && (flags & FLAG_STARVING) === 0) {
       soc.flags[i] = flags | FLAG_STARVING;
-      // a drought is the cause when there was one; otherwise the famine is an explicit root
+      // a recent drought is the cause; a drought from another lifetime is not
       const droughtCause = soc.lastDroughtEvent[i] ?? 0;
-      const cause = droughtCause > 0 ? droughtCause : -1;
+      const freshDrought = day - (soc.historyDay[i * 2] ?? 0) <= 720;
+      const cause = droughtCause > 0 && freshDrought ? droughtCause : -1;
       soc.lastFamineEvent[i] = appendEvent(
         world.society,
         day,
@@ -264,6 +266,7 @@ export function runConsumption(world: WorldState, day: number): void {
         foodShortfall,
         cause,
       );
+      soc.historyDay[i * 2 + 1] = day;
     } else if (!starving && (flags & FLAG_STARVING) !== 0) {
       soc.flags[i] = flags & ~FLAG_STARVING;
     }

@@ -128,6 +128,8 @@ export function worldChecksum(state: WorldState): number {
     crc = crc32OfU32(crc, soc.occupier[i] ?? 0);
     crc = crc32OfU32(crc, soc.surplusYears[i] ?? 0);
     crc = crc32OfU32(crc, soc.lastEpidemicDay[i] ?? 0);
+    crc = crc32OfU32(crc, soc.historyDay[i * 2] ?? 0);
+    crc = crc32OfU32(crc, soc.historyDay[i * 2 + 1] ?? 0);
     crc = crc32OfU32(crc, soc.foundedDay[i] ?? 0);
     crc = crc32OfU32(crc, soc.lastDroughtEvent[i] ?? 0);
     crc = crc32OfU32(crc, soc.lastFamineEvent[i] ?? 0);

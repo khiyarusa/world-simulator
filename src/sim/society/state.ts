@@ -183,6 +183,8 @@ export interface SocietyState {
   surplusYears: Uint8Array;
   /** day of the last epidemic in this settlement; a population needs time to regain immunity */
   lastEpidemicDay: Int32Array;
+  /** settlements × 2: day of the last drought and last famine, so a cause is never a stale event id */
+  historyDay: Int32Array;
 
   /** civs × 3 culture axes, -100..100 */
   culture: Int8Array;
@@ -305,6 +307,7 @@ export function allocateSociety(): SocietyState {
     occupier: new Uint8Array(s),
     surplusYears: new Uint8Array(s),
     lastEpidemicDay: new Int32Array(s),
+    historyDay: new Int32Array(s * 2),
 
     culture: new Int8Array(c * 3),
     tech: new Uint8Array(c * 12),

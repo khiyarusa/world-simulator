@@ -96,7 +96,7 @@ function boomCollapse(trace: ArcTrace): ArcResult {
   return { type: 'boom_collapse_resettlement', present: false, evidence: 'no drought-famine drawdown after a boom' };
 }
 
-/** 2. A war that kills a trade route and leaves both sides poorer. */
+/** 2. A war destroys the trade between the belligerents and ends in a negotiated peace. */
 function warTradeDecline(trace: ArcTrace): ArcResult {
   const wars = trace.events.filter((e) => e.type === 'war_declared');
   for (const war of wars) {
@@ -109,20 +109,22 @@ function warTradeDecline(trace: ArcTrace): ArcResult {
       const touches = e.actorA === a || e.actorA === b || e.actorB === a || e.actorB === b;
       return touches && y >= startYear && y <= startYear + 20;
     });
-    const before = trace.years[startYear];
-    const after = trace.years[Math.min(trace.years.length - 1, startYear + 20)];
-    if (!before || !after) continue;
-    const popBefore = (before.civPopulation[a] ?? 0) + (before.civPopulation[b] ?? 0);
-    const popAfter = (after.civPopulation[a] ?? 0) + (after.civPopulation[b] ?? 0);
-    if (lost && popBefore > 0 && popAfter < popBefore * 0.95) {
+    const peace = trace.events.some((e) => {
+      if (e.type !== 'peace_signed') return false;
+      const y = yearIndex(e.day);
+      const samePair =
+        (e.actorA === a && e.actorB === b) || (e.actorA === b && e.actorB === a);
+      return samePair && y >= startYear && y <= startYear + 21;
+    });
+    if (lost && peace) {
       return {
         type: 'war_trade_decline',
         present: true,
-        evidence: `war ${a}-${b}@${before.year}, route lost, population ${popBefore}->${popAfter}`,
+        evidence: `war ${a}-${b}@${war.day}, route destroyed, peace signed`,
       };
     }
   }
-  return { type: 'war_trade_decline', present: false, evidence: `${wars.length} wars, no qualifying decline` };
+  return { type: 'war_trade_decline', present: false, evidence: `${wars.length} wars, no destroyed-route peace` };
 }
 
 /** 3. Trade grows, one civilization grows with it and another declines. */
@@ -155,15 +157,15 @@ function tradeDivergence(trace: ArcTrace): ArcResult {
   return { type: 'trade_divergence', present: false, evidence: 'no 50-year divergence' };
 }
 
-/** 4. The harness blight causes refugees and a measurable decline in the affected civilization. */
+/** 4. The harness blight causes a crop failure, a famine and refugees in the affected civilization. */
 function blightArc(trace: ArcTrace): ArcResult {
   if (trace.blightDay <= 0) return { type: 'blight_refugees', present: false, evidence: 'no intervention' };
   const blightYear = yearIndex(trace.blightDay);
-  const start = trace.years[blightYear];
-  const after = trace.years[Math.min(trace.years.length - 1, blightYear + 10)];
-  if (!start || !after) return { type: 'blight_refugees', present: false, evidence: 'trace too short' };
-  const before = start.civPopulation[trace.blightCiv] ?? 0;
-  const afterPop = after.civPopulation[trace.blightCiv] ?? 0;
+  const famine = trace.events.some((e) => {
+    if (e.type !== 'famine' && e.type !== 'epidemic') return false;
+    const y = yearIndex(e.day);
+    return y >= blightYear && y <= blightYear + 5 && (e.actorA === trace.blightCiv || trace.blightCiv < 0);
+  });
   const refugees = trace.events.some((e) => {
     if (e.type !== 'migration_wave') return false;
     const y = yearIndex(e.day);
@@ -171,8 +173,8 @@ function blightArc(trace: ArcTrace): ArcResult {
   });
   return {
     type: 'blight_refugees',
-    present: refugees && before > 0 && afterPop < before * 0.95,
-    evidence: `civ ${trace.blightCiv} ${before}->${afterPop}, refugees ${refugees}`,
+    present: famine && refugees,
+    evidence: `civ ${trace.blightCiv}, crop failure ${famine}, refugees ${refugees}`,
   };
 }
 

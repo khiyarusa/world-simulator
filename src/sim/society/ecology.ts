@@ -72,6 +72,7 @@ export function runEcology(world: WorldState, day: number): void {
     const pop = populationOf(soc, i);
     const health = soc.health[i] ?? 60;
     const famine = soc.lastFamineEvent[i] ?? 0;
+    const freshFamine = day - (soc.historyDay[i * 2 + 1] ?? 0) <= 720;
     const lastEpidemic = soc.lastEpidemicDay[i] ?? 0;
     if (pop >= 120 && health < 45 && day - lastEpidemic >= 720) {
       // a recovered population keeps its immunity for two years; without that window an outbreak
@@ -97,7 +98,7 @@ export function runEcology(world: WorldState, day: number): void {
           s.civ[i] ?? 0,
           0,
           deaths,
-          famine > 0 ? famine : ROOT_CAUSE,
+          famine > 0 && freshFamine ? famine : ROOT_CAUSE,
         );
       }
     }
