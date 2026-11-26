@@ -3,11 +3,13 @@
 World Simulator — design set for the five-stage build. **Start with `../AGENTS.md`** (the rules), then
 this page (the map), then the two or three documents that own the area you are working on.
 
-Status of the whole set: **Stage 4 software-complete, physical-device pass pending** (2026-11-26).
+Status of the whole set: **Stage 5 software-complete, physical-device pass and release signing pending** (2026-11-26).
 The world engine, living simulation, player experience, six layers, six panels, interventions,
 multi-world management and Persian/English UI are implemented and tested in software. Evidence:
-[`STAGE_4_REPORT.md`](STAGE_4_REPORT.md) and [`STAGE_3_REPORT.md`](STAGE_3_REPORT.md); design contracts:
-[`STAGE_4_DESIGN.md`](STAGE_4_DESIGN.md) and [`STAGE_3_DESIGN.md`](STAGE_3_DESIGN.md).
+[`STAGE_5_REPORT.md`](STAGE_5_REPORT.md), [`STAGE_4_REPORT.md`](STAGE_4_REPORT.md) and
+[`STAGE_3_REPORT.md`](STAGE_3_REPORT.md); design contracts:
+[`STAGE_5_DESIGN.md`](STAGE_5_DESIGN.md), [`STAGE_4_DESIGN.md`](STAGE_4_DESIGN.md) and
+[`STAGE_3_DESIGN.md`](STAGE_3_DESIGN.md).
 
 ## Read in this order
 
@@ -32,6 +34,7 @@ multi-world management and Persian/English UI are implemented and tested in soft
 | 16 | [`STAGE_2_1_HARDENING.md`](STAGE_2_1_HARDENING.md) | The 13 verified defects, their root causes, fixes and regression tests, plus what was deliberately not fixed. | before changing determinism, saves, camera or markers |
 | 17 | [`STAGE_3_DESIGN.md`](STAGE_3_DESIGN.md) / [`STAGE_3_REPORT.md`](STAGE_3_REPORT.md) | The living-world contract and its measured evidence. | changing simulation rules or balance |
 | 18 | [`STAGE_4_DESIGN.md`](STAGE_4_DESIGN.md) / [`STAGE_4_REPORT.md`](STAGE_4_REPORT.md) | Player experience contract, schema 4, layer/panel/command design, evidence and remaining device work. | changing UI, queries, commands or saves |
+| 19 | [`STAGE_5_DESIGN.md`](STAGE_5_DESIGN.md) / [`STAGE_5_REPORT.md`](STAGE_5_REPORT.md) | Final visual/UX contract, defect ledger, performance/QA evidence, device/release status. | working on presentation, performance, QA or release |
 
 ## Ownership of facts (one fact, one home)
 

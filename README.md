@@ -6,13 +6,13 @@ and a history is written that you can read and trace back to its causes.
 
 The world does not need you. That is the point.
 
-> **Status: Stage 4 of 5 — software-complete, physical-device pass pending.**
-> Six real map layers, six panels, four validated player interventions, causal history and a
-> chronicle, multi-world management, Persian RTL (Vazirmatn) and English. Simulation, saves and
-> determinism are covered by unit, integration, browser E2E and visual-QA runs.
-> See [`docs/STAGE_4_REPORT.md`](docs/STAGE_4_REPORT.md), the design in
-> [`docs/STAGE_4_DESIGN.md`](docs/STAGE_4_DESIGN.md), and
-> [`docs/ROADMAP_5_STAGES.md`](docs/ROADMAP_5_STAGES.md).
+> **Status: Stage 5 of 5 — software-complete; physical Galaxy A23 and release signing pending.**
+> The final overhaul adds a rebuilt terrain/atlas presentation, settlement LOD and state marks,
+> six materially deeper layers and panels, cross-system navigation, real settings and onboarding,
+> Persian RTL/English large-text layout, mature-world visual QA, and measured query/render
+> optimizations. Simulation determinism and schema-4 saves are unchanged.
+> See [`docs/STAGE_5_REPORT.md`](docs/STAGE_5_REPORT.md) and
+> [`docs/STAGE_5_DESIGN.md`](docs/STAGE_5_DESIGN.md).
 
 ---
 

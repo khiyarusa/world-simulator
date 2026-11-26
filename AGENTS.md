@@ -26,8 +26,8 @@ The product test for every decision: *does this make the world more causally rea
 | 2 — World engine & playable foundation | **implementation complete — device validation pending** (`docs/STAGE_2_REPORT.md`) |
 | 2.1 — Reliability and correctness hardening | **complete** — 13 verified defects fixed, all with regression tests (`docs/STAGE_2_1_HARDENING.md`) |
 | 3 — Living world & civilization systems | **implementation and all eight software gates evidenced; physical Galaxy A23 capture pending** (`docs/STAGE_3_REPORT.md`) |
-| 4 — Player experience & content | **implementation complete — all software gates evidenced; physical Galaxy A23 capture pending** (`docs/STAGE_4_REPORT.md`) |
-| 5 — Optimisation, QA, release | not started |
+| 4 — Player experience & content | **software-complete; physical Galaxy A23 capture pending** (`docs/STAGE_4_REPORT.md`) |
+| 5 — Living atlas overhaul, optimisation, QA, release | **software-complete; physical Galaxy A23 validation and release signing pending** (`docs/STAGE_5_REPORT.md`) |
 
 There are exactly five stages. **There is no Stage 6.** Unfinished work is cut or explicitly reported,
 never deferred to an imaginary future stage.
@@ -212,41 +212,36 @@ Do not start a stage (or any implementation) unless the task prompt explicitly s
 
 ## 10. Current next action
 
-Stage 4 is implemented and its software gates are evidenced in `docs/STAGE_4_REPORT.md`: six real
-layers, six panels, four worker-validated interventions, causal history/chronicle, multi-world
-management, Persian RTL + English, unit/integration/E2E and visual QA. The remaining exit item is the
-physical-device pass, which this environment cannot produce:
+Stage 5 is implemented and its software gates are evidenced in `docs/STAGE_5_REPORT.md`. The final
+stage remains **device-pending and release-pending**:
 
-1. Install the CI APK (`android` workflow artifact) on a Galaxy A23 and run the Stage 5 device protocol
-   in `docs/PERFORMANCE_BUDGET.md` §11: a 50-year run at 8x, the save/load timings at year 200, and one
-   pass through every panel/layer with touch only.
-2. Record the captures in the Stage 5 report. Do not mark Stage 4 device-validated before that; Stage 4
-   is **software-complete, device-pending**.
+1. Install the CI APK/AAB on a Galaxy A23 and run the device protocol in
+   `docs/PERFORMANCE_BUDGET.md` §11: startup, 50-year 8× run, year-200 save/load, every layer/panel by
+   touch, Persian/English, 200 % text, landscape, background/resume, 15-minute thermal run.
+2. Record the real captures and timings in the Stage 5 report §9. Do not mark S5-A1/A2/A5 or release
+   signing as passed before that.
+3. Sign and package the release AAB; no cloud accounts or telemetry.
 
-Before changing anything, read `docs/STAGE_4_REPORT.md` §7 (remaining risks) and
-`docs/STAGE_4_DESIGN.md`. The Stage 4 contract that a future change must not silently break:
+The Stage 5 contract that a future change must not silently break:
 
-- schema 4 adds player interventions, their cooldowns, the yearly world series and settlement trend
-  windows; schema 3 blocks still decode with those rings empty (D-51).
-- every panel and layer reads a typed worker query; no panel owns a second copy of the world, and no
-  layer draws a value the simulation did not produce (D-52/D-54).
-- commands are validated in the worker and return a structured result; the UI never assumes success
-  (D-53).
-- the map stays responsive by rebuilding a layer only on a change of layer or after 30 simulated days;
-  markers are screen-space symbols whose world radius follows the camera (D-56).
-- Persian RTL with Vazirmatn is the default interface; English is a complete second language. Text is
-  localised through `t()`, not hardcoded in components (D-55).
+- **settlements founded after load reach the renderer.** `settlementMeta` carries live layout, civs
+  and capitals; the HUD/map/labels update without re-baking terrain (D-60).
+- **the political query is exact and bounded.** 18-tile nearest-settlement projection with a
+  deterministic bucket grid; `tests/worker/layers.test.ts` compares it byte-for-byte with the
+  reference (D-61).
+- **selection is not a per-frame Graphics rebuild.** Redraw only on selection/zoom change; pulse is
+  alpha-only and disabled by reduced motion/low power (D-62).
+- **schema 4 and the four shards are unchanged.** Stage 5 UI preferences and onboarding live in
+  `localStorage`; no world field was added (D-63).
+- **terrain is one deterministic 896 px bake** from the real grids; no per-tick/per-frame terrain
+  work (D-64).
+- **Persian RTL is the default interface**, English is complete, and text scaling uses
+  `--text-scale`; settings are real, not a translation-only switch (D-55/D-65).
 
-The Stage 3 contract that a future change must not silently break:
-
-- cohorts are the only population representation (D-42); `settlements.pop` is a projection.
-- the four-shard save set is unchanged and the society block lives in `meta` (D-44); schema 4 keeps
-  decoding genuine v2 and v3 blocks.
-- the war gate is four conditions, and every declaration persists all four values (D-47).
-- a severe event has an earlier cause or the explicit root marker `-1`; a player-caused event uses
-  `-2` (D-46/D-53).
-- moving the camera cannot change history; `tests/determinism/lod.test.ts` proves it on the real
-  pipeline.
+The Stage 3/4 contract also remains: cohorts are the only population representation (D-42); four
+shards with society inside `meta` (D-44); war gate four values (D-47); severe events have a cause or
+`-1`; player causes use `-2`; camera cannot affect history; `captureWorld()` has no `await`; recovery
+repoints and deletes the damaged generation; marker geometry is unit-tested.
 
 Invariants established by the hardening pass — do not "simplify" them away:
 

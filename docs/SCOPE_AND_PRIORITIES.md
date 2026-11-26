@@ -115,8 +115,8 @@ not planned · **CUT** decided against, with reason.
 | HUD: date, speed, layers, menu | P0 | 2 | |
 | 6 information layers | P0 | 4 | political first, then population/economy/ecology/history |
 | Bottom sheets: settlement, civ, economy, history, world, influence | P0 | 4 | |
-| Onboarding coach marks | P0 | 4 | |
-| Settings (text scale, motion, handedness, battery) | P0 | 4 | |
+| Onboarding coach marks | P0 | 4→5 | delivered in Stage 5 as closure of the Stage 4 P0 gap |
+| Settings (text scale, motion, handedness, battery) | P0 | 4→5 | delivered in Stage 5; persisted in `ws.prefs.v1`, not a save field |
 | Audio ambience | P1 | 4 | first thing cut if Stage 4 runs long |
 | Animated water, weather VFX | P2 | — | |
 | 3D/isometric view | CUT | — | see `UX_AND_VISUAL_DIRECTION.md` §1 |

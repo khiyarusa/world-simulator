@@ -408,3 +408,41 @@ world-simulator/
 6. Perf overlay + budgets wired into the CI perf job.
 
 Anything not on that list is not Stage 2.
+
+---
+
+## 12. Stage 5 architecture changes
+
+### 12.1 Live settlement layout
+
+The worker now emits `settlementMeta` whenever the settlement or civilization count changes. It carries
+the current `SettlementLayout` (x/y/name/civ/tier/pop) and `CivLayout` (names/colours/capitals). The
+main thread merges it into `WorldMetaMsg`, rebuilds pooled sprites/labels and updates the cartouche —
+without re-baking terrain, moving the camera or resetting the selection. The delta remains the small
+per-tick mirror.
+
+### 12.2 Renderer boundaries
+
+`render/input.ts` owns gesture recognition and inertia; `render/app.ts` owns the Pixi scene; `render/layers.ts`
+owns one raster texture/vector Graphics and LOD symbols; `render/settlementSprites.ts` owns procedural
+glyph/dot textures. `render/terrainBake.ts` is the only terrain bake, capped at 896 px.
+
+### 12.3 UI composition
+
+`ui/shell.ts` is the coordinator; `ui/sheets.ts` owns the sheet lifecycle; `ui/coach.ts` owns the three
+coach marks; `ui/mapChrome.ts` owns the cartouche/compass/scale; `ui/settings.ts` is the settings form;
+`ui/prefs.ts` owns the UI-only preference contract (`ws.prefs.v1`). Panels are layered in
+`panels*.ts`, and `ui/i18n.*` dictionaries are split by domain to keep each file reviewable.
+
+### 12.4 Queries and performance
+
+`queryLayers.ts` uses an exact 18-tile bucket grid for political territory. Layer queries are
+invalidated by layer change/day cadence; panels refresh only while open and only when the day changed,
+at most every 4 s. The renderer redraws selection and state marks only on selection/zoom/mirror
+changes.
+
+### 12.5 Testing hooks
+
+`advance` is a QA-only worker command that runs N days synchronously through the real `runDay`
+pipeline (queued behind a save). The visual suite uses it to reach a genuinely mature world; it is not
+exposed in the player UI and cannot alter rules, RNG or save shape.

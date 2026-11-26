@@ -216,3 +216,18 @@ exist would guarantee a rework.
 No binary art pack, no unlicensed asset, no downloaded texture. The 6 MB target is not close to being
 used. The manifest rule is met by this table plus `public/fonts/OFL.txt`; missing assets are impossible
 by construction because the glyphs/icons are generated, and the font has a system fallback.
+
+---
+
+## 10. Stage 5 asset changes
+
+| Asset | Change | Weight |
+|---|---|---|
+| Terrain | rebuilt deterministic 896 px bake; no new binary asset | 0 |
+| Settlements | richer procedural glyphs; overview dot texture in the same runtime atlas | 0 |
+| Icons | added settings/compass as inline SVG; same 24 px stroke family | < 2 KB |
+| Font | **only the verified Vazirmatn Regular WOFF2 is shipped**; Medium/Bold faces failed to load in Chromium and were removed. Weight 500/600/700 is synthesized by the browser. | 50.7 KB + OFL |
+| Thumbnails | real square framebuffer crop with sea fill | runtime storage only |
+
+Total shipped font/asset weight is ~51 KB plus the 4.4 KB licence, far below the 6 MB target. The
+removal is a correctness fix (zero-width text), not a licence or budget shortcut.

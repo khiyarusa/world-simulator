@@ -216,9 +216,14 @@ manifest/asset licence check; Lighthouse-ish first-paint check (informational).
 
 ---
 
-## Stage 5 — Optimization, QA and release
+## Stage 5 — Living atlas overhaul, optimization, QA and release
 
 **Objective:** ship it, or ship a smaller thing that works.
+
+**Status (2026-11-26):** **software-complete; physical A23 and release signing pending.** The Stage 5
+overhaul rebuilt the atlas presentation and UX, fixed the settlement-layout and political-query
+defects, added real settings/onboarding and mature-world visual QA, and kept schema 4 unchanged.
+S5-A1/A2/A5 and release signing remain device/release gates. Evidence: [`STAGE_5_REPORT.md`](STAGE_5_REPORT.md).
 
 | Area | Work |
 |---|---|

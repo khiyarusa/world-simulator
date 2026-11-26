@@ -302,3 +302,51 @@ supported for automated tests; the choice is stored in `localStorage`.
 Each panel is a vertical hierarchy: hero (identity) → risk/pill row → stat grid → measured section
 (headings, meters, charts) → actions. Tables are capped and scroll; the history feed owns its pagination.
 There is no "dump every field" list; the most decision-relevant values are visible without scrolling.
+
+---
+
+## 13. Stage 5 resolution — the living survey atlas
+
+The implemented visual system is a transparent Pixi canvas over a CSS sea page, framed by a cartouche,
+compass and live scale. This preserves the top-down 2D decision but removes the “video letterbox” and
+turns unused screen space into intentional atlas composition.
+
+### 13.1 Map materials
+
+- Deep water: `#102129` → `#2a4b59`, radial + fine diagonal grain; the terrain bake paints only the
+  world, never a black surround.
+- Survey land: bilinear elevation, NW hillshade, local curvature, altitude/moisture wash, slope
+  contours, biome grain, connected river polylines, lake/coast ink, muted beach and 4.5 % paper grain.
+- Cartouche: tagline + population / living settlements / civilizations.
+- Compass and a live km scale derived from camera zoom (1 tile ≈ 3 km).
+
+### 13.2 Settlement language and LOD
+
+Five silhouettes plus ruined; screen-constant 18–46 px; state marks for capital, occupied, starving,
+prosperous and blight. At overview zoom the map uses coloured dots, then capitals/towns, then all
+glyphs, so a 200-settlement world remains readable. Labels are collision-checked, viewport-clamped,
+priority-ranked and limited by zoom. Selection is a double ring + ticks + a restrained pulse that is
+disabled by reduced motion and low power.
+
+### 13.3 Layers
+
+Political (territory/borders/capitals/war/treaty/occupation), terrain, population (halos/migration
+origins), economy (wealth/shortage/routes), ecology (fertility/vegetation/moisture/temperature and
+hazards), history (latest-most-severe pin per place; player differentiation). Layer changes are
+instant, keep camera and selection, and rebuild only on change/30 days (political 90, low power 180).
+
+### 13.4 Settings and onboarding (implemented)
+
+- Settings: language, text 100–200 %, motion (system/reduced), right/left-handed, low power, replay
+  onboarding. Stored in `ws.prefs.v1`; never in a save.
+- Text scale is a real layout variable (`--text-scale` on every font size), not a zoom trick. 200 %
+  is tested at 320 dp with zero horizontal overflow.
+- Three coach marks: map gestures, settlement inspection, layer/speed. Step 2 advances on settlement
+  selection and step 3 on layer/panel use; skip and completion are persisted.
+- Large-text mode hides the save sentence, lets the date wrap, and keeps all six tabs reachable.
+
+### 13.5 Charts and numbers
+
+Charts are real series from the worker. Range labels are forced LTR so min/max stay in the correct
+order in Persian. Values are compact only where a full number would clip; labels may take two lines.
+No trend is drawn from less data than exists (one sample is a flat line, zero is an empty state).

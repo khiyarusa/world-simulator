@@ -321,3 +321,21 @@ a bug report. This is the reason we do not need cloud saves in v1.
 | Event store grows unbounded through a bug | hard cap + drop policy + a test that asserts the cap after 10k years |
 | RNG state not saved ⇒ silent non-determinism | RNG states are in `meta` and compared in the round-trip test |
 | Two tabs / two app instances writing one world | single-instance guard via a `worlds.lock` key + BroadcastChannel; second instance opens read-only (P1) |
+
+---
+
+## 10. Stage 5 — no schema change, new stress evidence
+
+Stage 5 deliberately did **not** change the persisted shape:
+
+- `SAVE_SCHEMA_VERSION` remains **4**; checksum contract remains **v6**.
+- The four shards (`meta`, `terrain`, `settlements`, `civs`) and the current+previous generation
+  recovery are untouched.
+- v1→v2→v3→v4 migrations and v2/v3 legacy-block decoding are untouched.
+- Settings, language and onboarding live in `localStorage` (`ws.prefs.v1`, `ws.lang`), not in the
+  world.
+- `tests/persistence/stress.test.ts` performs **50 consecutive** serialise/deserialise cycles on a
+  world with a real Bless, a mature event history and yearly samples; every cycle asserts the exact
+  world checksum and schema 4.
+- The measured year-400 Medium raw save remains 1,158 KiB (1,185,792 B), under the strict
+  1,200,000-byte contract.

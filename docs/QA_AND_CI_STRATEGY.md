@@ -320,3 +320,30 @@ corruption case, and a fixed-vs-moving-camera A/B test on the real pipeline.
 - **Repository gates:** the 500-line limit is honoured by splitting the new modules (D-58); the
   determinism/lint gates run unchanged.
 - **Device:** still Stage 5. E2E proves the software path, not A23 frame times, touch feel or TalkBack.
+
+---
+
+## 13. Stage 5 QA additions
+
+- **Mature-world visual scenarios:** the visual test advances the real pipeline 200 years to 200
+  settlements, then advances until an active war exists, applies a real Blight, and captures all six
+  layers/panels, event detail, chronicle, settings, 200 % text, 320 dp, landscape/landscape panel and
+  both languages. 31 real captures live in `docs/qa/stage5/`.
+- **Stage 5 E2E (5 tests):** coach marks advance by action, settings persist without world mutation,
+  200 % text at 320 dp has no horizontal overflow, a mature world pushes >100 new settlements to map
+  and HUD, and ecology exposes four real metrics.
+- **Political acceleration:** `tests/worker/layers.test.ts` compares the bucket implementation
+  byte-for-byte with the reference nearest-settlement projection and checks the 18-tile radius.
+- **Save stress:** 50 consecutive serialize/deserialize cycles preserve the checksum with an
+  intervention and a mature history ring.
+- **Large-world leak gate:** the balance workflow runs 1 seed × 500 years at the Large preset and
+  `scripts/assert-stress.mjs` fails on an invariant failure, an empty world or a live heap above
+  1.5 GB. This is a leak bound, not a device-memory measurement.
+- **E2E timeout:** the suite uses 180 s per test (240 s for the mature-world test). Software WebGL on
+  the 2-vCPU development box is several times slower than the CI runner; the budget is deliberately
+  generous so a slow machine is not reported as a product failure. Waits themselves remain
+  event-driven.
+- **CI:** typecheck, lint, repo gates, 117 unit/integration tests, two-process determinism, hydrology,
+  web build, 13 E2E tests, 31 visual captures, Android APK+AAB, 20×400 balance and 1×500 Large stress.
+
+Current local counts: **117 unit/integration tests in 18 files; 13 E2E; 31 visual captures.**

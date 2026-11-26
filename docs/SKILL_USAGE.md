@@ -221,3 +221,19 @@ implemented from the Stage 2 decisions (D-33…D-39) and recorded in `docs/TECHN
 
 Not loaded because they did not own the task: `game-ai`, `ai-behavior-trees-utility-ai` (simulation AI was
 finished in Stage 3), `audio-design` (audio is P1 and not implemented), `physics-tuning`, `shader-programming`.
+
+---
+
+## 8. Stage 5 — skills actually used
+
+| Skill | Applied to | Contribution |
+|---|---|---|
+| `gamedev-router` | start of the final overhaul; PixiJS 8 + Web Worker fingerprint | routed to rendering/UI/performance/QA; no engine change |
+| `pixijs-rendering` | terrain cache, layer containers, LOD dot textures, no per-frame Graphics | moved selection redraw out of `applyTransform`, one vector Graphics, screen-space markers |
+| `game-ui-ux` | shell, panels, settings, coach marks, safe areas, large text | event-driven panels, wrapped tabs, real settings/onboarding, compact save status |
+| `performance-optimization` | bake budget, political bucket grid, panel day gate | measure-first reductions: 1792→896 bake, exact bucket query, no idle panel query |
+| `create-game-assets` | procedural glyph/icon/font inventory | shipped only the verified Regular WOFF2; documented licence and weight |
+| `game-docs` | Stage 5 design/report, defect ledger, status reconciliation | documentation matches code and device-pending claims are explicit |
+
+Not loaded: `game-ai`, `ai-behavior-trees-utility-ai` (simulation AI complete), `audio-design` (P1
+not implemented), `physics-tuning`, `shader-programming` (no shader work).

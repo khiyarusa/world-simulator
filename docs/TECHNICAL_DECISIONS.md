@@ -11,7 +11,7 @@ named stage), **Deferred** (deliberately not now).
 
 ## 1. Decisions
 
-### D-01 — TypeScript 7 for type checking
+### D-01 — TypeScript 7 for type checking *(superseded by D-59)*
 
 - **Decision:** `typescript@^7.0.2`, `tsc --noEmit` as the type gate, strict flags on.
 - **Alternatives:** TypeScript 6.0.3 (JS compiler); plain JS + JSDoc.
@@ -734,3 +734,94 @@ names the invariant it protects, because the next agent will be tempted to "simp
   the split keeps each file with one owner and makes the Stage 4 diff reviewable.
 - **Trade-off:** more modules and a few re-export lines; the build and the repository gate both accept
   the result.
+
+### D-59 — The tested toolchain is TypeScript 6.0.3; D-01 is superseded
+
+- **Decision:** `package.json` and CI use `typescript@6.0.3` with `tsc --noEmit`; the repository and
+  every Stage 2–5 workflow were verified on that toolchain. D-01's TypeScript 7 assumption is
+  superseded until a separate migration is measured and tested.
+- **Why:** a decision record that names a toolchain the repository does not use is a stale fact with
+  the same severity as a failing gate; the tested package lock is authoritative.
+- **Trade-off:** no TS 7 features are used. A future migration must add a CI A/B and update this ADR.
+
+### D-60 — Live settlement layout is a worker message, not a re-bake
+
+- **Decision:** when the settlement or civilization count changes, the worker emits `settlementMeta`
+  with the full live `SettlementLayout` + `CivLayout` (including capitals). The main thread updates
+  meta, renderer sprites, labels and HUD without re-baking terrain or resetting the camera.
+- **Why:** Stage 4 created sprites only at mount; a world that reached 200 settlements still showed the
+  original six and a stale “6 settlements” HUD. Queries were correct, so the renderer/HUD were the
+  lie. Mature visual QA exposed it.
+- **Trade-off:** a small structured copy when the count changes (rare: foundings/civ formation), not
+  per tick. The delta still carries only ids/pop/civ/tier/state.
+
+### D-61 — Political territory uses an exact 18-tile bucket grid
+
+- **Decision:** keep the Stage 4 semantics (nearest living settlement within 18 tiles, lower
+  settlement index tie-break), but evaluate candidates from the 3×3 spatial buckets around a tile.
+  `tests/worker/layers.test.ts` compares the result byte-for-byte with the reference scan for Small
+  and Medium worlds and checks the radius bound.
+- **Why:** the O(land × settlements) scan was the most expensive query at 200 settlements and the
+  source of a stale “10 tiles” comment. A visually similar approximation would change ownership.
+- **Trade-off:** one extra bucket build per layer query; the result is exactly the reference.
+
+### D-62 — Screen-space LOD and no per-frame selection rebuild
+
+- **Decision:** settlements render as coloured dots below zoom 0.105, capitals/towns below 0.28, and
+  full glyphs at local zoom. Selection redraws only on selection/zoom change; its pulse is an alpha
+  animation, disabled by reduced motion and low power. State marks use `screenPx / zoom` radii and
+  redraw on mirror/zoom, not per frame.
+- **Why:** 200 detailed glyphs overlapped into an unreadable pile, and `drawSelection()` cleared and
+  refilled a Graphics every frame.
+- **Trade-off:** a glyph is not drawn at world-overview; the dot remains tied to real population,
+  tier and capital status, and the label/panel still identify the settlement.
+
+### D-63 — UI preferences stay out of the world save
+
+- **Decision:** language remains in `ws.lang`; text scale, motion, handedness, low power and onboarding
+  progress live in `ws.prefs.v1` in `localStorage`. Schema 4, checksum v6 and the four shards are
+  unchanged by Stage 5.
+- **Why:** the save is the world, not a settings file; adding UI fields would force a migration and
+  consume the narrow 1.2 MB save margin for no gameplay value.
+- **Trade-off:** preferences do not travel with a world; they are device-local by design.
+
+### D-64 — Terrain bake is capped at 896 px in Stage 5
+
+- **Decision:** the deterministic bake cap is 896 px (bilinear relief, contours, rivers, coast). A
+  higher-resolution *detail* bake is deferred; the world view uses one texture.
+- **Why:** the 1792 px version measured ~1.5 s on the CI software renderer; 896 px measured ~0.65 s,
+  which keeps cold start within the software budget and still covers the ~780 CSS px fit width.
+- **Trade-off:** deep zoom is softened. A device pass should decide whether a viewport detail bake is
+  worth its texture upload; that is a Stage 5 release task, not silently added here.
+
+### D-65 — Settings and onboarding close the documented Stage 4 P0 gap
+
+- **Decision:** implement the documented text scale (100–200 %), motion (system/reduced), handedness,
+  low power and three contextual coach marks. Text scaling changes `--text-scale` on every font size;
+  handedness reverses the control arc without mirroring the map; low power lengthens layer refresh and
+  disables nonessential pulses, never simulation correctness.
+- **Why:** Stage 4 shipped translations but no settings/onboarding flow; a translation key is not an
+  interface. These were P0 commitments in `SCOPE_AND_PRIORITIES.md`, so they are closure work, not new
+  features.
+- **Trade-off:** more UI state and test surface; all of it is local and covered by Stage 5 E2E.
+
+### D-66 — World thumbnails are a centred square crop with sea fill
+
+- **Decision:** `snapshotDataUrl` fills the destination with the deep-sea colour and crops the centre
+  square of the framebuffer before drawing it.
+- **Why:** the Pixi canvas is transparent (D-64 composition); drawing it directly into a JPEG produced
+  black letterbox bars in the world list. The crop preserves aspect and matches the atlas plate.
+- **Trade-off:** the thumbnail shows the map square, not the whole phone viewport, which is the useful
+  part of a world preview.
+
+### D-67 — Release the renderer and worker on `pagehide`
+
+- **Decision:** `window.pagehide` (when `event.persisted` is false) calls `Session.dispose()`, which
+  terminates the worker and destroys the Pixi application with `releaseGlobalResources`. A `disposed`
+  flag makes it idempotent. `visibilitychange` still only pauses/resumes.
+- **Why:** navigation and page close are when the WebGL context and worker should die. Leaving them to
+  the browser leaked contexts in long automated runs and delays reclamation on constrained devices.
+  Bfcache restores are excluded because the page must keep its resources.
+- **Trade-off:** a page that is actually being torn down loses its in-memory state, which is correct;
+  the world is already in IndexedDB. Backgrounding never fires this path without `persisted` in a
+  Chromium WebView, so resume is unaffected.

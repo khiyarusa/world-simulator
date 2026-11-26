@@ -304,3 +304,31 @@ Rendering budgets introduced by Stage 4:
 - no blur, shadow or full-screen effect added; the existing vignette/paper grain is baked.
 
 Device frame times, save/load real timings and thermal behaviour remain **pending Stage 5**.
+
+---
+
+## 14. Stage 5 measurements and budgets
+
+CI-class Linux runner, Chromium/SwiftShader. These are software measurements, not A23 numbers.
+
+| Metric | Value | Budget / note |
+|---|---|---|
+| Terrain bake (896 px) | ~0.65 s | once per load; 1792 px was ~1.5 s and was reduced |
+| Political layer at 200 settlements | ~90 ms | query + render, 90-day refresh |
+| Population/economy/ecology/history layer at 200 | ~20–95 ms | cached until layer/day cadence |
+| Selection redraw | on selection/zoom only | removed per-frame Graphics rebuild |
+| Panel refresh | ≤ every 4 s and only if the day changed | no idle query |
+| Tick p95 (400 y) | 0.323 ms | unchanged simulation authority |
+| Raw save (400 y) | 1,158 KiB | < 1,200,000 B |
+| APK (Stage 4 measured) | 5.59 MB | < 25 MB |
+| Bundle | index 428.7 kB / 125.3 kB gzip | + UI modules |
+
+New hard design rules:
+
+- no per-frame terrain, layer or selection rebuild;
+- no per-tick panel query;
+- 896 px terrain cap (raising it requires a measured startup budget and an ADR);
+- sparse marker LOD at overview;
+- settings text scaling never changes the canvas resolution.
+
+Device frame time, thermal, cold start and memory remain **PENDING** for the A23 pass.
