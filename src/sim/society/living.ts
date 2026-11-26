@@ -110,7 +110,7 @@ export function runClimate(world: WorldState, day: number): void {
       if ((flag & FLAG_DROUGHT) === 0) {
         soc.flags[i] = flag | FLAG_DROUGHT;
         soc.lastDroughtEvent[i] = appendEvent(world.society, day, EVENT_TYPE.DROUGHT, SEVERITY.NOTABLE, i, s.civ[i] ?? 0, 0, soc.regionDroughtMonths[region] ?? 0, 0);
-        soc.historyDay[i * 2] = day;
+        soc.historyDay[i * 3] = day;
       }
     } else if ((flag & FLAG_DROUGHT) !== 0) {
       soc.flags[i] = flag & ~FLAG_DROUGHT;
@@ -152,7 +152,7 @@ export function runProduction(world: WorldState, day: number): void {
     const civ = s.civ[i] ?? 0;
     const agriTech = (soc.tech[civ * 12] ?? 0) + (soc.tech[civ * 12 + 1] ?? 0) + (soc.tech[civ * 12 + 2] ?? 0);
     const indTech = (soc.tech[civ * 12 + 3] ?? 0) + (soc.tech[civ * 12 + 4] ?? 0) + (soc.tech[civ * 12 + 5] ?? 0);
-    let milli = farmers * 6000;
+    let milli = farmers * 8000;
     milli = mulDiv(milli, seasonal, 1000);
     milli = mulDiv(milli, drought ? 400 : 1000, 1000);
     milli = mulDiv(milli, fertilePm(world, i), 1000);
@@ -248,30 +248,40 @@ export function runConsumption(world: WorldState, day: number): void {
     if ((soc.treasury[i] ?? 0) < 0) stability -= 1;
     soc.stability[i] = stability < 0 ? 0 : stability > 100 ? 100 : stability;
 
-    // --- famine is a transition, not a every-day event
+    // --- famine is a sustained shortage, not an every-day flag flip. It needs 15 consecutive
+    // shortfall days and at most one event per year; a recurrence within five years is notable rather
+    // than historic, so the vital ring is not flooded by a settlement that is merely hungry.
     const starving = foodShortfall > 0;
     const flags = soc.flags[i] ?? 0;
-    if (starving && (flags & FLAG_STARVING) === 0) {
-      soc.flags[i] = flags | FLAG_STARVING;
-      // a recent drought is the cause; a drought from another lifetime is not
-      const droughtCause = soc.lastDroughtEvent[i] ?? 0;
-      const freshDrought = day - (soc.historyDay[i * 2] ?? 0) <= 720;
-      const cause = droughtCause > 0 && freshDrought ? droughtCause : -1;
-      if (cause > 0) retainEvent(soc, cause);
-      soc.lastFamineEvent[i] = appendEvent(
-        world.society,
-        day,
-        EVENT_TYPE.FAMINE,
-        SEVERITY.MAJOR,
-        i,
-        s.civ[i] ?? 0,
-        0,
-        foodShortfall,
-        cause,
-      );
-      soc.historyDay[i * 2 + 1] = day;
-    } else if (!starving && (flags & FLAG_STARVING) !== 0) {
-      soc.flags[i] = flags & ~FLAG_STARVING;
+    const shortStart = soc.historyDay[i * 3 + 2] ?? 0;
+    if (starving) {
+      if (shortStart === 0) soc.historyDay[i * 3 + 2] = day;
+      if ((flags & FLAG_STARVING) === 0) soc.flags[i] = flags | FLAG_STARVING;
+      const sustained = day - (soc.historyDay[i * 3 + 2] ?? day) >= 15;
+      const lastFamine = soc.historyDay[i * 3 + 1] ?? 0;
+      if (sustained && day - lastFamine >= 360) {
+        const droughtCause = soc.lastDroughtEvent[i] ?? 0;
+        const freshDrought = day - (soc.historyDay[i * 3] ?? 0) <= 720;
+        const cause = droughtCause > 0 && freshDrought ? droughtCause : -1;
+        if (cause > 0) retainEvent(soc, cause);
+        // only a substantial deficit is historic; ordinary hunger stays notable and out of the vital ring
+        const severity = foodShortfall * 4 >= needFood ? SEVERITY.MAJOR : SEVERITY.NOTABLE;
+        soc.lastFamineEvent[i] = appendEvent(
+          world.society,
+          day,
+          EVENT_TYPE.FAMINE,
+          severity,
+          i,
+          s.civ[i] ?? 0,
+          0,
+          foodShortfall,
+          cause,
+        );
+        soc.historyDay[i * 3 + 1] = day;
+      }
+    } else {
+      soc.historyDay[i * 3 + 2] = 0;
+      if ((flags & FLAG_STARVING) !== 0) soc.flags[i] = flags & ~FLAG_STARVING;
     }
   }
 }

@@ -25,7 +25,7 @@ import {
   recordDecision,
   stockOf,
 } from './state.ts';
-import { atWar, civSettlementCount, isAlive, removePeople } from './common.ts';
+import { atWar, civPopulation, civSettlementCount, isAlive, removePeople } from './common.ts';
 import { breakTreaties, treatyBetween } from './diplomacy.ts';
 import { TREATY } from './state.ts';
 
@@ -154,7 +154,8 @@ function warMargin(world: WorldState, a: number, b: number, ratio: number, griev
   const tradeCost = treatyBetween(soc, a, b, TREATY.TRADE) ? 15 : 0;
   const allyCost = treatyBetween(soc, a, b, TREATY.ALLIANCE) ? 1000 : 0;
   const income = Math.min(30, Math.floor(((soc.treasury[world.civs.capital[b] ?? 0] ?? 0) / 30)));
-  const utility = Math.min(1000, greed + grievanceUtility + income);
+  const strategic = Math.min(20, Math.floor(civPopulation(world, b) / 2000));
+  const utility = Math.min(1000, greed + grievanceUtility + income + strategic);
   return Math.max(0, utility - 50 - exhaustionCost - tradeCost - allyCost);
 }
 

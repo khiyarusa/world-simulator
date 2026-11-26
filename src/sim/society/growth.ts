@@ -153,7 +153,7 @@ export function runGrowth(world: WorldState, day: number): void {
       soc.flags[i] = (soc.flags[i] ?? 0) | FLAG_RUINED;
       world.counters.abandonments += 1;
       const famine = soc.lastFamineEvent[i] ?? 0;
-      const fresh = day - (soc.historyDay[i * 2 + 1] ?? 0) <= 720;
+      const fresh = day - (soc.historyDay[i * 3 + 1] ?? 0) <= 720;
       appendEvent(
         world.society,
         day,

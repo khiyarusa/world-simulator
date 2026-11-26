@@ -122,93 +122,96 @@ break it, and sorted integer keys reorder silently). This is a hard rule enforce
 
 ## 4. The tick pipeline
 
-Order matters and is fixed. Each phase reads the state produced by earlier phases **of the previous
-tick** where noted; the double-buffered fields are marked `(prev)`.
+The implementation declares **13 stages**; several conceptual stages share one pass over settlements
+by construction, and the design document (`docs/STAGE_3_DESIGN.md` §7) is the authoritative map. Order
+is fixed; a stage reads only what earlier stages wrote in the same tick, and no system re-reads a value
+it has already written.
 
 ```
-tick(day, dt):
-  1. clock        update derived season/month; emit calendar events
-  2. climate      (MONTHLY) temperature anomaly, precipitation per region
-  3. ecology      vegetation growth, erosion, wildfire, flood checks
-  4. fertility    soil update from vegetation/erosion/flood deposits
-  5. agriculture  per settlement: harvest = f(land, labour, water, tech, season, weather)
-  6. extraction   wood/stone/metal from owned tiles, capped by vegetation/deposits
-  7. craft        goods = f(metal, wood, labour, tech)
-  8. consumption  food/water/fuel per capita; spoilage; reserve days
-  9. health       from sufficiency, sanitation, epidemic flag
- 10. demographics births/deaths (MONTHLY), cohort ageing (YEARLY slice)
- 11. stability    from food/health/war/tax/crowding/disaster memory
- 12. migration    (MONTHLY) compute flows, resolve in id order, conserve population
- 13. trade        (WEEKLY) route capacity, price gaps, movement, tariffs
- 14. build        utility-scored infrastructure, paid from surplus + treasury
- 15. military     manpower, upkeep, supply stock
- 16. diplomacy    (MONTHLY) relation deltas, treaty proposals, war declarations
- 17. war          (MONTHLY) fronts, attrition, occupation, peace
- 18. settle-growth/decline, fragmentation, abandonment, new settlement founding
- 19. civ          (MONTHLY) legitimacy, culture drift, tech spread
- 20. events       flush decision records → events, cause links, severity filter
- 21. chronicle    (YEARLY slice) per-civ summary, downsample old events
- 22. audit        (dev only) invariants: conservation, bounds, id validity
+runDay(state):
+  1. climate          (MONTHLY) region precipitation/temperature, drought flags + events
+  2. ecology          (MONTHLY) vegetation harvest/regrowth, soil erosion/recovery, wildfire, flood, epidemic
+  3. labour           (MONTHLY) adult cohorts move toward comparative advantage (70% cap), people conserved
+  4. agriculture      (DAILY)   food/water/wood/stone/metal/goods from labour, land, weather, tech, infrastructure
+  5. consumption      (DAILY)   food/water/fuel draw, spoilage, health and stability, famine transitions
+  6. migration        (MONTHLY) cohort-exact flows out of failing settlements
+  7. trade            (MONTHLY) prices, head levy, route creation/movement/closures, tariffs
+  8. build            (MONTHLY) utility-scored infrastructure, paid in materials and coin
+  9. military         (MONTHLY) army toward fieldable soldiers, coin/food upkeep
+ 10. diplomacy        (YEARLY)  relation drivers, grievance, treaty proposals/expiry, tribute
+ 11. war              (MONTHLY) four-condition gate, fronts, attrition, occupation, peace
+ 12. settlement-growth(MONTHLY) caps, sustained-surplus promotion, founding by arable crowding, collapse
+ 13. civilization     (MONTHLY/YEARLY) research, spread, literacy, culture drift, civilization formation
+ 14. chronicle        (YEARLY)  per-civilization aggregates from real events
+     plus: demography + ageing at year end; syncPopulation projects cohorts into the legacy array
 ```
 
-**Read/write discipline.** Phases 5–12 read `pop(prev)` and write proposals; the proposal buffers are
-committed in phase 12. This prevents "order of iteration changes the outcome" bugs (e.g. a settlement
-consuming food a neighbour has not yet produced).
+There is no double buffering. The order is the contract: production is computed before consumption, and
+the audit is a separate harness phase, not a simulation stage. Every loop is over `0..count` in id order.
 
 ## 5. Economy rules (exact formulas)
 
-All values integer. `per_mille` means `/1000`.
+All values are integers. `per_mille` means `/1000`; fractional production is carried per settlement and
+resource in `carry` (0..999) so daily flows conserve to the unit.
 
 ```
-// --- agriculture (daily, per settlement, Tier 0 detail)
-land        = ownedTiles × biomeYield[biome] × fertility/255
-labour      = cohortAdults_farm × 2.6            // 1 farmer feeds ~2.6
-seasonMul   = [0.15, 0.45, 1.00, 0.55][season]   // winter..autumn (hemisphere-agnostic)
-weatherMul  = 400..1600 per_mille from drought/flood
-techMul     = 1000 + 150 × techLevel(Agriculture)
-harvest     = (land × labour × seasonMul × weatherMul × techMul) / (1000^3)
+// --- agriculture (daily, per settlement)
+landCap     = 220 + 20 × fertility(tile)              // arable capacity, one source: economy.landCapacity
+landPm      = clamp(300, 1000, landCap × 1000 / pop)  // yield per farmer falls as land fills
+fertilePm   = 700 + 3 × fertility(tile)               // 0.7x .. 1.465x
+harvest     = farmers × 6000 × seasonPm × droughtPm × fertilePm × landPm × techPm
+              / 1000^4 ; seasonPm = [500, 800, 1100, 1000], droughtPm = 400 when struck
+techPm      = 1000 + 80 × agriculture techs; irrigation multiplies by 1150/1000
+
+// --- extraction / craft (daily, same pass)
+wood        = extractors × (timber tile ? 3000 : 1500) × industryPm / 1000
+stone/metal = extractors × (deposit ? 2000 / 1200 : 0) × industryPm / 1000
+goods       = min(crafters × 500 × workshopPm × industryPm, metal×1000, wood×1000) / 1000
+              consuming one metal and one wood per good
 
 // --- consumption (daily)
-needFood    = pop × 1000                        // 1.000 grain/person/day, in milli-units
-needWater   = pop × 2000
-needFuel    = pop × 150                         // wood
-shortfall   = max(0, needFood − food)
-food       -= min(food, needFood)
-spoilage    = food × spoilagePerMille(tier, season) / 1000   // 0.2%–1.5%/day
+needFood    = pop × 1000 milli = pop units
+needWater   = pop × 1200 milli
+needFuel    = pop × 150 milli
+spoilage    = max(1 if food>0, food × 1 / 1000)
+health     ±= food/water/fuel shortfall, density, well/aqueduct/temple
+stability  ±= food, health, crowding, occupation, temple, treasury
 
-// --- starvation (daily, applied monthly in aggregate)
-starving    = shortfall / 1000                  // person-days lost
-health     -= clamp(starving / pop × 400, 0, 3)
-deaths     += starving × 0.9                    // people
+// --- prices (monthly, per settlement, per resource)
+perPerson   = stock × 1000 / pop
+price       = clamp(250, 3000, targetDays × 1000 × 1000 / max(1, perPerson))
 
-// --- prices (weekly, per settlement, per resource)
-demand      = consumptionRate × 7
-supply      = stock + productionRate × 7
-price       = basePrice × clamp(demand×1000 / max(supply,1), 400, 3000) / 1000
+// --- trade (monthly, per route)
+capacity    = routeCapacity(units/day) × 30, capped by 80/day at creation
+qty         = min(capacity, seller surplus above reserve, buyer deficit, buyer free cap, buyer affordable)
+buyer pays  = floor(qty × sellerPrice / 1000) + floor(value × tariff / 1000)
+              from buyer treasury to seller treasury (coin is transferred, never created)
 
-// --- trade (weekly, per route)
-gap         = price[dest] − price[src] − tariff − transportCost(distance)
-if gap > 0: move = min(routeCapacity, src.stock − src.reserve, dest.stockCap − dest.stock)
-            wealth[src] += move × price[src] × tariffPerMille / 1000
+// --- treasury (monthly)
+tax         = pop × (600 + 4 × stability) / 1000      // the only faucet; the state's claim on production
+spend       = infrastructure coin cost, army upkeep, tribute (all transfers or real construction)
 ```
 
-Conservation invariants (tested every tick in dev, every 1000 ticks in CI production profile):
-`Σ food_created − Σ food_consumed − Σ spoil = Σ food_stock` and the same for water/wood/stone/metal/
-goods. Population: `Σ births − Σ deaths − Σ emigrants + Σ immigrants = Σ pop` exactly (integer).
+Resource caps are recomputed monthly from population and infrastructure; a cap never falls below the
+stock already held, so shrinking a settlement cannot delete goods its people own.
+
+Population identity: `initial + births − deaths == final` exactly, with starvation, epidemic and war
+deaths counted as the number of people actually removed from cohorts. Occupation changes and migration
+are paired transfers within or between settlements.
 
 ## 6. Population cohorts
 
-Per settlement, 8 cohorts: `children(0–14)`, `youth(15–24)`, `adult_farm`, `adult_extract`,
-`adult_craft`, `adult_trade`, `adult_military`, `elders(60+)`.
+Per settlement, 8 cohorts: `children(0–14)`, `youth(15–24)`, `farmers`, `extractors`, `crafters`,
+`traders`, `soldiers`, `elders(60+)`. The total is the settlement population; `settlements.pop` is a
+per-tick projection of it (D-42).
 
-- Ageing is applied in 12 yearly slices (one cohort block per month) so no tick spikes.
-- Occupation shares move toward the sector with the highest marginal yield, capped at **700‰ per
-  sector** (anti-monoculture) and floored at 50‰ for food.
-- Military share is capped by `war_capacity` and decays after peace.
+- Ageing is yearly: children→youth `1/15`, youth→farmers `1/10`, farmers→elders `1/40`; remainders stay
+  in the source cohort, so rounding never creates or destroys a person.
+- Occupation is monthly: labour moves toward the measured comparative advantage of the settlement (land,
+  deposits, materials, routes, threat) at up to 1.5 % of adults per month, with a **700‰ cap per
+  occupation**. Every move is a paired transfer between adult cohorts.
+- The five adult cohorts' per-mille projection is stored in `occShare` and sums to exactly 1000.
 - A cohort is a **number**, not an agent: no pathfinding, no inventory, no per-person decision.
-
-Consequence: 200 settlements × 8 cohorts = 1,600 integers updated daily, i.e. negligible. The cost
-sits in the *rules* (multiplications), not the entities, which is why the model scales.
 
 ## 7. Decision making (utility AI)
 

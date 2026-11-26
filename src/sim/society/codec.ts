@@ -196,7 +196,7 @@ export function encodeSociety(world: WorldState): SocietyDoc {
     occupier: arr(s.occupier, sc),
     surplusYears: arr(s.surplusYears, sc),
     lastEpidemicDay: arr(s.lastEpidemicDay, sc),
-    historyDay: arr(s.historyDay, sc * 2),
+    historyDay: arr(s.historyDay, sc * 3),
     culture: arr(s.culture, CIV_STRIDE * 3),
     tech: arr(s.tech, CIV_STRIDE * 12),
     techProgress: arr(s.techProgress, CIV_STRIDE * 12),
@@ -332,7 +332,7 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   copy(s.occupier, optionalArray(d.occupier, 'occupier', sc, legacy, 0));
   copy(s.surplusYears, optionalArray(d.surplusYears, 'surplusYears', sc, legacy, 0));
   copy(s.lastEpidemicDay, optionalArray(d.lastEpidemicDay, 'lastEpidemicDay', sc, legacy, 0));
-  copy(s.historyDay, optionalArray(d.historyDay, 'historyDay', sc * 2, legacy, 0));
+  copy(s.historyDay, optionalArray(d.historyDay, 'historyDay', sc * 3, legacy, 0));
   copy(s.culture, civArray(d.culture, 'culture', 3, cc, legacy, 0));
   copy(s.tech, civArray(d.tech, 'tech', 12, cc, legacy, 0));
   copy(s.techProgress, civArray(d.techProgress, 'techProgress', 12, cc, legacy, 0));
