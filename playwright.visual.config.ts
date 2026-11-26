@@ -6,7 +6,7 @@ import { defineConfig } from '@playwright/test';
  */
 export default defineConfig({
   testDir: 'tests/visual',
-  timeout: 180_000,
+  timeout: 600_000,
   expect: { timeout: 25_000 },
   fullyParallel: false,
   workers: 1,

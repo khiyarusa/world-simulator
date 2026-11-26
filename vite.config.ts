@@ -25,5 +25,9 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     environment: 'node',
     reporters: ['dot'],
+    // Golden generation takes ~9 s on the documented 2-vCPU development box; the 5 s default
+    // reports a slow machine as a failing world. CI is faster, so this budget is only headroom.
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
   },
 });

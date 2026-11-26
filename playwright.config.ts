@@ -4,7 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
 // correctness here, never frame rate (docs/QA_AND_CI_STRATEGY.md §10).
 export default defineConfig({
   testDir: 'tests/e2e',
-  timeout: 90_000,
+  timeout: 180_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,

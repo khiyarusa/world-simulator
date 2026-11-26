@@ -33,7 +33,9 @@ test('six layers and all six panels open with real data', async ({ page }) => {
   await boot(page);
   await createWorld(page, 'FEEDFACE-00000002');
 
-  for (const layer of ['political', 'population', 'economy', 'ecology', 'history']) {
+  // Ecology stays last: choosing it keeps the sheet open for its metric switch, so the next dock
+  // tap would otherwise race the closing animation on a slow machine.
+  for (const layer of ['political', 'population', 'economy', 'history', 'ecology']) {
     await page.locator('.dock-btn').first().click();
     await expect(page.locator('.sheet.open')).toBeVisible();
     await expect(page.locator('.layer-row')).toHaveCount(6);
@@ -41,6 +43,13 @@ test('six layers and all six panels open with real data', async ({ page }) => {
     await page.waitForFunction((l) => window.__ws?.state().layer === l, layer);
   }
   await page.evaluate(() => window.__ws?.setLayer('terrain'));
+  // The ecology sheet is still open by design; a player closes it before inspecting the map.
+  await page.evaluate(() => {
+    const close = [...document.querySelectorAll('.sheet.open .sheet-body button')].find((b) =>
+      /Close/.test(b.textContent ?? ''),
+    );
+    (close as HTMLElement | undefined)?.click();
+  });
 
   await page.evaluate(() => window.__ws?.select(0));
   await expect(page.locator('.panel.open')).toBeVisible();
