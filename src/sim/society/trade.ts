@@ -9,6 +9,7 @@ import type { WorldState } from '../state/worldState.ts';
 import {
   DECISION,
   EVENT_TYPE,
+  RES,
   RES_COUNT,
   ROUTE_CAPACITY,
   SEVERITY,
@@ -272,11 +273,39 @@ function decayRoutes(world: WorldState, day: number): void {
   }
 }
 
-/** Monthly trade phase: prices, treasury, route creation, movement, decay. */
+/** Within one civilization, grain moves from surplus to deficit: the state's granary, not a market. */
+function runRelief(world: WorldState): void {
+  const soc = world.society;
+  const s = world.settlements;
+  for (let civ = 0; civ < world.civs.count; civ++) {
+    for (let to = 0; to < s.count; to++) {
+      if ((s.civ[to] ?? 0) !== civ || !isAlive(world, to)) continue;
+      const popTo = Math.max(1, populationOf(soc, to));
+      let need = popTo * 20 - stockOf(soc, to, RES.FOOD);
+      if (need <= 0) continue;
+      for (let from = 0; from < s.count && need > 0; from++) {
+        if (from === to || (s.civ[from] ?? 0) !== civ || !isAlive(world, from)) continue;
+        const popFrom = Math.max(1, populationOf(soc, from));
+        const surplus = stockOf(soc, from, RES.FOOD) - popFrom * 45;
+        if (surplus <= 0) continue;
+        const take = Math.min(need, surplus);
+        const before = stockOf(soc, from, RES.FOOD);
+        addStock(soc, from, RES.FOOD, -take);
+        const removed = before - stockOf(soc, from, RES.FOOD);
+        const added = addStock(soc, to, RES.FOOD, removed);
+        need -= added;
+        if (added < removed) addStock(soc, from, RES.FOOD, removed - added);
+      }
+    }
+  }
+}
+
+/** Monthly trade phase: prices, treasury, relief, route creation, movement, decay. */
 export function runTrade(world: WorldState, day: number): void {
   if (day % 30 !== 0) return;
   recomputePrices(world);
   runTreasury(world);
+  runRelief(world);
   createRoutes(world, day);
   for (let route = 0; route < world.society.routeCount; route++) moveAlongRoute(world, route, day);
   decayRoutes(world, day);

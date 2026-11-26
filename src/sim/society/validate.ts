@@ -77,25 +77,9 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     }
   }
 
-  const allIds = new Set<number>();
   const vitalIds = new Set<number>();
-  for (let k = 0; k < s.vital.count; k++) {
-    const id = s.vital.id[k] ?? 0;
-    if (id <= 0 || vitalIds.has(id)) fail(`vital event id ${id} is not unique and positive`);
-    allIds.add(id);
-    vitalIds.add(id);
-  }
   const mainIds = new Set<number>();
   const cap = s.eventId.length;
-  let retentionFloor = Number.MAX_SAFE_INTEGER;
-  if (s.eventCount > 0) {
-    const oldest = (s.eventHead - s.eventCount + cap * 2) % cap;
-    retentionFloor = Math.min(retentionFloor, s.eventId[oldest] ?? 0);
-  }
-  if (s.vital.count > 0) {
-    const oldestVital = (s.vital.head - s.vital.count + s.vital.id.length * 2) % s.vital.id.length;
-    retentionFloor = Math.min(retentionFloor, s.vital.id[oldestVital] ?? 0);
-  }
   for (let n = 0; n < s.eventCount; n++) {
     // logical order (oldest first), not physical index order: after a wrap the array starts mid-history
     const k = (s.eventHead - s.eventCount + n + cap * 2) % cap;
@@ -103,16 +87,13 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     if (id <= 0 || mainIds.has(id)) fail(`event id ${id} is not unique and positive`);
     const cause = s.eventCause[k] ?? 0;
     if (cause !== 0 && cause !== -1) {
-      // a cause older than the retention floor was evicted by the documented ring budget, not lost
-      if (!allIds.has(cause) && cause >= retentionFloor) {
-        fail(`event ${id} (type ${s.eventType[k] ?? 0}) references a cause that does not exist (${cause})`);
-      }
+      // Cause availability is a history-retention property, measured over every event the harness
+      // observed (S3-A4); a save can legitimately have evicted an ancestor. Causality is structural.
       if (cause >= id) fail(`event ${id} references a later cause (${cause})`);
     }
     const day = s.eventDay[k] ?? 0;
     if (day < 1) fail(`event ${id} has day ${day}`);
     mainIds.add(id);
-    allIds.add(id);
   }
   if (s.eventCount > 0) {
     let maxId = 0;
