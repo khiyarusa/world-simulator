@@ -4,6 +4,10 @@
  * Keeping it in `meta` means the v1 four-shard generation set is still exactly four shards, so the
  * Stage 2.1 completeness rule and recovery logic are untouched. Decoding is defensive: a malformed or
  * short array is a corrupt save, not a partially loaded world.
+ *
+ * Schema 3 adds trade routes, treaties, wars, military state, prices, technology progress and the
+ * occupation marker. A schema-2 block still decodes: the new structures are empty, which is exactly
+ * what a world that predates those systems had.
  */
 import { SimError } from '../../core/errors.ts';
 import type { WorldState } from '../state/worldState.ts';
@@ -11,16 +15,20 @@ import { validateSociety } from './validate.ts';
 import {
   allocateSociety,
   COHORT_COUNT,
+  CIV_STRIDE,
   DECISION_CAPACITY,
   EVENT_CAPACITY,
   RES_COUNT,
+  ROUTE_CAPACITY,
+  TREATY_CAPACITY,
+  WAR_CAPACITY,
   type SocietyState,
 } from './state.ts';
 
 type Numbers = number[];
 
 export interface SocietyDoc {
-  v: 2;
+  v: 2 | 3;
   cohorts: Numbers;
   occShare: Numbers;
   stock: Numbers;
@@ -34,17 +42,28 @@ export interface SocietyDoc {
   flags: Numbers;
   foundedDay: Numbers;
   lastDroughtEvent: Numbers;
+  lastFamineEvent: Numbers;
+  price: Numbers;
+  occupier: Numbers;
+  surplusYears: Numbers;
   culture: Numbers;
   tech: Numbers;
+  techProgress: Numbers;
   legitimacy: Numbers;
   relation: Numbers;
   grievance: Numbers;
+  army: Numbers;
+  exhaustion: Numbers;
+  warWins: Numbers;
   regionDroughtMonths: Numbers;
   regionPrecip: Numbers;
   regionTempAnomaly: Numbers;
   events: { count: number; nextId: number; rows: Numbers };
   decisions: { count: number; rows: Numbers };
   chronicle: { count: number; rows: Numbers };
+  routes: { count: number; rows: Numbers };
+  treaties: { count: number; rows: Numbers };
+  wars: { count: number; rows: Numbers };
 }
 
 const arr = (src: ArrayLike<number>, n: number): Numbers => Array.from(src).slice(0, n);
@@ -95,8 +114,51 @@ export function encodeSociety(world: WorldState): SocietyDoc {
     );
   }
 
+  const routes: Numbers = [];
+  for (let i = 0; i < s.routeCount; i++) {
+    routes.push(
+      s.routeA[i] ?? 0,
+      s.routeB[i] ?? 0,
+      s.routeCapacity[i] ?? 0,
+      s.routeLength[i] ?? 0,
+      s.routeTariff[i] ?? 0,
+      s.routeCreated[i] ?? 0,
+      s.routeVolume[i] ?? 0,
+      s.routeIdle[i] ?? 0,
+    );
+  }
+
+  const treaties: Numbers = [];
+  for (let i = 0; i < s.treatyCount; i++) {
+    treaties.push(
+      s.treatyA[i] ?? 0,
+      s.treatyB[i] ?? 0,
+      s.treatyType[i] ?? 0,
+      s.treatyStart[i] ?? 0,
+      s.treatyEnd[i] ?? 0,
+    );
+  }
+
+  const wars: Numbers = [];
+  for (let i = 0; i < s.warCount; i++) {
+    wars.push(
+      s.warA[i] ?? 0,
+      s.warB[i] ?? 0,
+      s.warStart[i] ?? 0,
+      s.warScore[i] ?? 0,
+      s.warExhaustA[i] ?? 0,
+      s.warExhaustB[i] ?? 0,
+      s.warBattles[i] ?? 0,
+      s.warCause[i] ?? 0,
+      s.warGateStrength[i] ?? 0,
+      s.warGateGrievance[i] ?? 0,
+      s.warGateCapacity[i] ?? 0,
+      s.warGateUtility[i] ?? 0,
+    );
+  }
+
   return {
-    v: 2,
+    v: 3,
     cohorts: arr(s.cohorts, sc * COHORT_COUNT),
     occShare: arr(s.occShare, sc * 5),
     stock: arr(s.stock, sc * RES_COUNT),
@@ -110,17 +172,28 @@ export function encodeSociety(world: WorldState): SocietyDoc {
     flags: arr(s.flags, sc),
     foundedDay: arr(s.foundedDay, sc),
     lastDroughtEvent: arr(s.lastDroughtEvent, sc),
-    culture: arr(s.culture, cc * 3),
-    tech: arr(s.tech, cc * 12),
-    legitimacy: arr(s.legitimacy, cc),
-    relation: arr(s.relation, cc * cc),
-    grievance: arr(s.grievance, cc * cc),
+    lastFamineEvent: arr(s.lastFamineEvent, sc),
+    price: arr(s.price, sc * RES_COUNT),
+    occupier: arr(s.occupier, sc),
+    surplusYears: arr(s.surplusYears, sc),
+    culture: arr(s.culture, CIV_STRIDE * 3),
+    tech: arr(s.tech, CIV_STRIDE * 12),
+    techProgress: arr(s.techProgress, CIV_STRIDE * 12),
+    legitimacy: arr(s.legitimacy, CIV_STRIDE),
+    relation: arr(s.relation, CIV_STRIDE * CIV_STRIDE),
+    grievance: arr(s.grievance, CIV_STRIDE * CIV_STRIDE),
+    army: arr(s.army, CIV_STRIDE),
+    exhaustion: arr(s.exhaustion, CIV_STRIDE),
+    warWins: arr(s.warWins, CIV_STRIDE),
     regionDroughtMonths: arr(s.regionDroughtMonths, 16),
     regionPrecip: arr(s.regionPrecip, 16),
     regionTempAnomaly: arr(s.regionTempAnomaly, 16),
     events: { count: s.eventCount, nextId: s.nextEventId, rows },
     decisions: { count: s.decisionCount, rows: decisions },
     chronicle: { count: s.chronicleCount, rows: chronicle },
+    routes: { count: s.routeCount, rows: routes },
+    treaties: { count: s.treatyCount, rows: treaties },
+    wars: { count: s.warCount, rows: wars },
   };
 }
 
@@ -138,6 +211,12 @@ function expectArray(value: unknown, label: string, expected: number): Numbers {
   return value as Numbers;
 }
 
+/** Schema-2 blocks lack the newer arrays; their absence has one legal meaning (empty), not "any". */
+function optionalArray(value: unknown, label: string, expected: number, fill: number): Numbers {
+  if (value === undefined) return new Array<number>(expected).fill(fill);
+  return expectArray(value, label, expected);
+}
+
 function expectRows(value: unknown, label: string, stride: number, cap: number): Numbers {
   if (!Array.isArray(value)) throw new SimError('SAVE_CORRUPT', `society.${label} is not an array`);
   if (value.length % stride !== 0) throw new SimError('SAVE_CORRUPT', `society.${label} has a partial row`);
@@ -145,10 +224,51 @@ function expectRows(value: unknown, label: string, stride: number, cap: number):
   return value as Numbers;
 }
 
+/**
+ * Civilization-major array. Schema 3 stores the fixed 12-civ stride; schema 2 stored only the used
+ * rows, so a genuine v2 block is expanded into the fixed stride instead of being reinterpreted.
+ */
+function civArray(value: unknown, label: string, width: number, civs: number, legacy: boolean, fill: number): Numbers {
+  if (!Array.isArray(value)) throw new SimError('SAVE_CORRUPT', `society.${label} is not an array`);
+  const fixed = CIV_STRIDE * width;
+  if (!legacy) return expectArray(value, label, fixed);
+  if (value.length === fixed) return value as Numbers;
+  if (value.length !== civs * width) {
+    throw new SimError('SAVE_CORRUPT', `society.${label} length ${value.length} is neither ${civs * width} nor ${fixed}`);
+  }
+  const out = new Array<number>(fixed).fill(fill);
+  for (let c = 0; c < civs; c++) {
+    for (let k = 0; k < width; k++) out[c * width + k] = value[c * width + k] ?? fill;
+  }
+  return out;
+}
+
+/** A civ×civ matrix: schema 3 is 12×12, schema 2 stored only the used `civs × civs` corner. */
+function civMatrix(value: unknown, label: string, civs: number, legacy: boolean): Numbers {
+  if (!Array.isArray(value)) throw new SimError('SAVE_CORRUPT', `society.${label} is not an array`);
+  const fixed = CIV_STRIDE * CIV_STRIDE;
+  if (!legacy) return expectArray(value, label, fixed);
+  if (value.length === fixed) return value as Numbers;
+  if (value.length !== civs * civs) {
+    throw new SimError('SAVE_CORRUPT', `society.${label} length ${value.length} != ${civs * civs}`);
+  }
+  const out = new Array<number>(fixed).fill(0);
+  for (let r = 0; r < civs; r++) {
+    for (let c = 0; c < civs; c++) out[r * CIV_STRIDE + c] = value[r * civs + c] ?? 0;
+  }
+  return out;
+}
+
+function optionalRows(value: unknown, label: string, stride: number, cap: number): Numbers {
+  if (value === undefined) return [];
+  return expectRows(value, label, stride, cap);
+}
+
 export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   if (!doc || typeof doc !== 'object') throw new SimError('SAVE_CORRUPT', 'society block missing');
   const d = doc as SocietyDoc;
-  if (d.v !== 2) throw new SimError('UNSUPPORTED_VERSION', `society block version ${String(d.v)}`);
+  if (d.v !== 2 && d.v !== 3) throw new SimError('UNSUPPORTED_VERSION', `society block version ${String(d.v)}`);
+  const legacy = d.v === 2;
 
   const sc = world.settlements.count;
   const cc = world.civs.count;
@@ -171,11 +291,19 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   copy(s.flags, expectArray(d.flags, 'flags', sc));
   copy(s.foundedDay, expectArray(d.foundedDay, 'foundedDay', sc));
   copy(s.lastDroughtEvent, expectArray(d.lastDroughtEvent, 'lastDroughtEvent', sc));
-  copy(s.culture, expectArray(d.culture, 'culture', cc * 3));
-  copy(s.tech, expectArray(d.tech, 'tech', cc * 12));
-  copy(s.legitimacy, expectArray(d.legitimacy, 'legitimacy', cc));
-  copy(s.relation, expectArray(d.relation, 'relation', cc * cc));
-  copy(s.grievance, expectArray(d.grievance, 'grievance', cc * cc));
+  copy(s.lastFamineEvent, optionalArray(d.lastFamineEvent, 'lastFamineEvent', sc, 0));
+  copy(s.price, optionalArray(d.price, 'price', sc * RES_COUNT, 1000));
+  copy(s.occupier, optionalArray(d.occupier, 'occupier', sc, 0));
+  copy(s.surplusYears, optionalArray(d.surplusYears, 'surplusYears', sc, 0));
+  copy(s.culture, civArray(d.culture, 'culture', 3, cc, legacy, 0));
+  copy(s.tech, civArray(d.tech, 'tech', 12, cc, legacy, 0));
+  copy(s.techProgress, civArray(d.techProgress, 'techProgress', 12, cc, legacy, 0));
+  copy(s.legitimacy, civArray(d.legitimacy, 'legitimacy', 1, cc, legacy, 50));
+  copy(s.relation, civMatrix(d.relation, 'relation', cc, legacy));
+  copy(s.grievance, civMatrix(d.grievance, 'grievance', cc, legacy));
+  copy(s.army, civArray(d.army, 'army', 1, cc, legacy, 0));
+  copy(s.exhaustion, civArray(d.exhaustion, 'exhaustion', 1, cc, legacy, 0));
+  copy(s.warWins, civArray(d.warWins, 'warWins', 1, cc, legacy, 0));
   copy(s.regionDroughtMonths, expectArray(d.regionDroughtMonths, 'regionDroughtMonths', 16));
   copy(s.regionPrecip, expectArray(d.regionPrecip, 'regionPrecip', 16));
   copy(s.regionTempAnomaly, expectArray(d.regionTempAnomaly, 'regionTempAnomaly', 16));
@@ -183,6 +311,7 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   const events = expectRows(d.events?.rows, 'events.rows', 9, EVENT_CAPACITY);
   s.eventCount = Math.min(EVENT_CAPACITY, d.events?.count ?? 0);
   s.nextEventId = Math.max(1, d.events?.nextId ?? 1);
+  if (events.length < s.eventCount * 9) throw new SimError('SAVE_CORRUPT', 'society.events rows shorter than count');
   for (let k = 0; k < s.eventCount; k++) {
     const o = k * 9;
     s.eventId[k] = events[o] ?? 0;
@@ -199,6 +328,7 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
 
   const decisions = expectRows(d.decisions?.rows, 'decisions.rows', 5, DECISION_CAPACITY);
   s.decisionCount = Math.min(DECISION_CAPACITY, d.decisions?.count ?? 0);
+  if (decisions.length < s.decisionCount * 5) throw new SimError('SAVE_CORRUPT', 'society.decisions rows shorter than count');
   for (let k = 0; k < s.decisionCount; k++) {
     const o = k * 5;
     s.decisionDay[k] = decisions[o] ?? 0;
@@ -211,6 +341,7 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
 
   const chronicle = expectRows(d.chronicle?.rows, 'chronicle.rows', 5, 4096);
   s.chronicleCount = Math.min(4096, d.chronicle?.count ?? 0);
+  if (chronicle.length < s.chronicleCount * 5) throw new SimError('SAVE_CORRUPT', 'society.chronicle rows shorter than count');
   for (let k = 0; k < s.chronicleCount; k++) {
     const o = k * 5;
     s.chronicleYear[k] = chronicle[o] ?? 0;
@@ -220,6 +351,52 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
     s.chronicleEvents[k] = chronicle[o + 4] ?? 0;
   }
   s.chronicleHead = s.chronicleCount % 4096;
+
+  const routes = optionalRows(d.routes?.rows, 'routes.rows', 8, ROUTE_CAPACITY);
+  s.routeCount = legacy ? 0 : Math.min(ROUTE_CAPACITY, d.routes?.count ?? 0);
+  if (routes.length < s.routeCount * 8) throw new SimError('SAVE_CORRUPT', 'society.routes rows shorter than count');
+  for (let k = 0; k < s.routeCount; k++) {
+    const o = k * 8;
+    s.routeA[k] = routes[o] ?? 0;
+    s.routeB[k] = routes[o + 1] ?? 0;
+    s.routeCapacity[k] = routes[o + 2] ?? 0;
+    s.routeLength[k] = routes[o + 3] ?? 0;
+    s.routeTariff[k] = routes[o + 4] ?? 0;
+    s.routeCreated[k] = routes[o + 5] ?? 0;
+    s.routeVolume[k] = routes[o + 6] ?? 0;
+    s.routeIdle[k] = routes[o + 7] ?? 0;
+  }
+
+  const treaties = optionalRows(d.treaties?.rows, 'treaties.rows', 5, TREATY_CAPACITY);
+  s.treatyCount = legacy ? 0 : Math.min(TREATY_CAPACITY, d.treaties?.count ?? 0);
+  if (treaties.length < s.treatyCount * 5) throw new SimError('SAVE_CORRUPT', 'society.treaties rows shorter than count');
+  for (let k = 0; k < s.treatyCount; k++) {
+    const o = k * 5;
+    s.treatyA[k] = treaties[o] ?? 0;
+    s.treatyB[k] = treaties[o + 1] ?? 0;
+    s.treatyType[k] = treaties[o + 2] ?? 0;
+    s.treatyStart[k] = treaties[o + 3] ?? 0;
+    s.treatyEnd[k] = treaties[o + 4] ?? 0;
+  }
+
+  const wars = optionalRows(d.wars?.rows, 'wars.rows', 12, WAR_CAPACITY);
+  s.warCount = legacy ? 0 : Math.min(WAR_CAPACITY, d.wars?.count ?? 0);
+  if (wars.length < s.warCount * 12) throw new SimError('SAVE_CORRUPT', 'society.wars rows shorter than count');
+  for (let k = 0; k < s.warCount; k++) {
+    const o = k * 12;
+    s.warA[k] = wars[o] ?? 0;
+    s.warB[k] = wars[o + 1] ?? 0;
+    s.warStart[k] = wars[o + 2] ?? 0;
+    s.warScore[k] = wars[o + 3] ?? 0;
+    s.warExhaustA[k] = wars[o + 4] ?? 0;
+    s.warExhaustB[k] = wars[o + 5] ?? 0;
+    s.warBattles[k] = wars[o + 6] ?? 0;
+    s.warCause[k] = wars[o + 7] ?? 0;
+    s.warGateStrength[k] = wars[o + 8] ?? 0;
+    s.warGateGrievance[k] = wars[o + 9] ?? 0;
+    s.warGateCapacity[k] = wars[o + 10] ?? 0;
+    s.warGateUtility[k] = wars[o + 11] ?? 0;
+  }
 
   // semantics, not just shapes: reject an impossible world instead of coercing it
   validateSociety(world, s);

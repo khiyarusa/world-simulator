@@ -69,7 +69,7 @@ describe('living world', () => {
     const seen = new Set<number>();
     for (let k = 0; k < soc.eventCount; k++) {
       const cause = soc.eventCause[k] ?? 0;
-      if (cause !== 0) expect(seen.has(cause)).toBe(true);
+      if (cause !== 0 && cause !== -1) expect(seen.has(cause)).toBe(true);
       seen.add(soc.eventId[k] ?? 0);
     }
     expect(soc.eventCount).toBeGreaterThan(0);
@@ -79,7 +79,7 @@ describe('living world', () => {
     const state = world(11);
     run(state, 400);
     const restored = await deserializeWorld(await serializeWorld(state));
-    expect(restored.schemaVersion).toBe(2);
+    expect(restored.schemaVersion).toBe(3);
     expect(restored.state.day).toBe(state.day);
     expect(worldChecksum(restored.state)).toBe(worldChecksum(state));
     expect(totalPopulation(restored.state)).toBe(totalPopulation(state));

@@ -1,24 +1,40 @@
 /**
- * Settlement life cycle: tiers, founding and abandonment (docs/GDD.md §7).
+ * Settlement life cycle: storage capacity, tiers, founding and abandonment (GDD §7).
  *
- * Founding transfers people and stores from the parent; it never creates them (D-43).
+ * Founding transfers people and stores from the parent; it never creates them (D-43). Promotion needs
+ * two consecutive years of food surplus and the infrastructure the tier requires; demotion is a real
+ * collapse, recorded as an event rather than a silent number change.
  */
 import type { WorldState } from '../state/worldState.ts';
-import { CAPACITY, tierOf } from '../state/worldState.ts';
+import { CAPACITY, TIER, tierOf } from '../state/worldState.ts';
 import {
   COHORT,
   EVENT_TYPE,
   RES,
+  RES_COUNT,
   SEVERITY,
   addCohort,
   addStock,
   appendEvent,
   cohortOf,
+  infraHas,
   populationOf,
   stockOf,
 } from './state.ts';
-import { FLAG_RUINED, isAlive } from './common.ts';
+import { isAlive } from './common.ts';
+import { recalcCaps } from './economy.ts';
 import { syncPopulation } from './living.ts';
+
+/** The infrastructure a tier requires, as a predicate over the settlement's built bits. */
+function tierInfraOk(world: WorldState, settlement: number, tier: number): boolean {
+  const soc = world.society;
+  if (tier <= TIER.VILLAGE) return true;
+  const granaryOrWell = infraHas(soc, settlement, 0) || infraHas(soc, settlement, 1);
+  if (tier === TIER.TOWN) return granaryOrWell;
+  const marketOrWorkshop = infraHas(soc, settlement, 4) || infraHas(soc, settlement, 5);
+  if (tier === TIER.CITY) return granaryOrWell && marketOrWorkshop && infraHas(soc, settlement, 3);
+  return granaryOrWell && marketOrWorkshop && infraHas(soc, settlement, 3) && (infraHas(soc, settlement, 8) || infraHas(soc, settlement, 9));
+}
 
 /**
  * Found a daughter settlement next to its parent, moving people cohort-by-cohort.
@@ -29,9 +45,8 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
   const soc = world.society;
   const px = s.x[parent] ?? 0;
   const py = s.y[parent] ?? 0;
-  const maxRadius = 7;
   let site = -1;
-  for (let r = 2; r <= maxRadius && site < 0; r++) {
+  for (let r = 2; r <= 7 && site < 0; r++) {
     for (let dy = -r; dy <= r && site < 0; dy++) {
       for (let dx = -r; dx <= r && site < 0; dx++) {
         if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // ring only
@@ -57,7 +72,7 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
 
   const index = s.count;
   s.x[index] = site % world.width;
-  s.y[index] = site / world.width;
+  s.y[index] = Math.floor(site / world.width);
   s.pop[index] = 0;
   s.civ[index] = s.civ[parent] ?? 0;
   s.tier[index] = 0;
@@ -68,6 +83,11 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
   soc.stability[index] = 60;
   soc.literacy[index] = soc.literacy[parent] ?? 10;
   soc.flags[index] = 0;
+  soc.lastDroughtEvent[index] = 0;
+  soc.lastFamineEvent[index] = 0;
+  soc.occupier[index] = 0;
+  soc.surplusYears[index] = 0;
+  for (let r = 0; r < RES_COUNT; r++) soc.price[index * RES_COUNT + r] = 1000;
   s.count = index + 1;
 
   // move 40 % of the parent (capped), youngest cohorts first so the daughter can grow
@@ -87,8 +107,8 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
     s.count = index; // nothing to move: undo
     return;
   }
+  recalcCaps(world);
   // seed the daughter from the parent's stores (a transfer, so the world total is unchanged)
-  // a daughter needs a working reserve, otherwise reserve-aware fertility freezes it at birth
   const food = Math.min(stockOf(soc, parent, RES.FOOD), moved * 90);
   addStock(soc, parent, RES.FOOD, -food);
   addStock(soc, index, RES.FOOD, food);
@@ -97,41 +117,49 @@ function foundDaughter(world: WorldState, parent: number, day: number): void {
   syncPopulation(world);
 }
 
-
-// ------------------------------------------------------------------ settlement life cycle (monthly)
-
+/** Monthly settlement life cycle. Caps are recalculated first, from the population that exists now. */
 export function runGrowth(world: WorldState, day: number): void {
+  if (day % 30 !== 0) return;
+  recalcCaps(world);
   const soc = world.society;
   const s = world.settlements;
 
   for (let i = 0; i < s.count; i++) {
     if (!isAlive(world, i)) continue;
     const pop = populationOf(soc, i);
+    const foodDays = Math.floor(stockOf(soc, i, RES.FOOD) / Math.max(1, pop));
 
-    if (pop <= 0) {
-      soc.flags[i] = (soc.flags[i] ?? 0) | FLAG_RUINED;
-      world.counters.abandonments += 1;
-      appendEvent(world.society, day, EVENT_TYPE.SETTLEMENT_ABANDONED, SEVERITY.HISTORIC, i, s.civ[i] ?? 0, 0, 0, 0);
-      continue;
-    }
+    // --- sustained surplus, not one good month: promotion needs two consecutive years
+    if (foodDays >= 30) soc.surplusYears[i] = Math.min(255, (soc.surplusYears[i] ?? 0) + 1);
+    else soc.surplusYears[i] = 0;
 
     // --- founding: prosperity plus room founds a daughter settlement (transfer, not creation)
     if (
       pop >= 220 &&
       (soc.stability[i] ?? 0) >= 55 &&
-      stockOf(soc, i, RES.FOOD) > pop * 20 &&
+      foodDays > 20 &&
+      foodDays < 120 && // a settlement that hoards for a century is not the one that expands
       s.count < CAPACITY.settlements &&
       day % 60 === 0
     ) {
       foundDaughter(world, i, day);
+      continue;
     }
 
-    const tier = tierOf(pop);
-    if (tier > (s.tier[i] ?? 0) && stockOf(soc, i, RES.FOOD) > pop * 30) {
-      s.tier[i] = tier;
-      appendEvent(world.society, day, EVENT_TYPE.TIER_UP, SEVERITY.NOTABLE, i, s.civ[i] ?? 0, 0, tier, 0);
-    } else if (tier < (s.tier[i] ?? 0)) {
-      s.tier[i] = tier;
+    const wanted = tierOf(pop);
+    const current = s.tier[i] ?? 0;
+    if (wanted > current) {
+      const next = current + 1;
+      if ((soc.surplusYears[i] ?? 0) >= 24 && tierInfraOk(world, i, next) && stockOf(soc, i, RES.FOOD) > pop * 30) {
+        s.tier[i] = next;
+        appendEvent(world.society, day, EVENT_TYPE.TIER_UP, SEVERITY.NOTABLE, i, s.civ[i] ?? 0, 0, next, 0);
+      }
+    } else if (wanted < current) {
+      // demotion is a collapse, recorded as an event: a real food failure, not a quiet number change
+      if ((soc.surplusYears[i] ?? 0) === 0 && foodDays < 5) {
+        s.tier[i] = wanted;
+        appendEvent(world.society, day, EVENT_TYPE.COLLAPSE, SEVERITY.MAJOR, i, s.civ[i] ?? 0, 0, wanted, -1);
+      }
     }
   }
 }

@@ -241,6 +241,18 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
     abandonments: meta.counters?.abandonments ?? 0,
     foodProduced: meta.counters?.foodProduced ?? 0,
     foodConsumed: meta.counters?.foodConsumed ?? 0,
+    infraBuilt: meta.counters?.infraBuilt ?? 0,
+    routesOpened: meta.counters?.routesOpened ?? 0,
+    routesLost: meta.counters?.routesLost ?? 0,
+    tradeVolume: meta.counters?.tradeVolume ?? 0,
+    tributePaid: meta.counters?.tributePaid ?? 0,
+    taxCollected: meta.counters?.taxCollected ?? 0,
+    warsDeclared: meta.counters?.warsDeclared ?? 0,
+    warsEnded: meta.counters?.warsEnded ?? 0,
+    warDeaths: meta.counters?.warDeaths ?? 0,
+    techDiscovered: meta.counters?.techDiscovered ?? 0,
+    starvationDeaths: meta.counters?.starvationDeaths ?? 0,
+    epidemicDeaths: meta.counters?.epidemicDeaths ?? 0,
   };
 
   const state: WorldState = {

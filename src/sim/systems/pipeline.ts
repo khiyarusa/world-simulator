@@ -18,6 +18,13 @@ import {
   runMigration,
   runProduction,
 } from '../society/living.ts';
+import { runEcology } from '../society/ecology.ts';
+import { runOccupations } from '../society/occupations.ts';
+import { runTrade } from '../society/trade.ts';
+import { runConstruction } from '../society/infra.ts';
+import { runMilitary, runWar } from '../society/war.ts';
+import { runDiplomacyYearly } from '../society/diplomacy.ts';
+import { runCivYearly, runResearch, runTechSpread } from '../society/civ.ts';
 
 export interface TickContext {
   state: WorldState;
@@ -30,27 +37,26 @@ export interface TickContext {
 
 export type Stage = (ctx: TickContext) => void;
 
-/** Declared phase order. Stage 3 implements the first eight plus the heal/growth/history tail. */
+/**
+ * Declared phase order. Every phase owns a real system: the comments name the module, and a phase
+ * that only shares a pass with another one says so explicitly instead of pretending to be empty.
+ */
 export const DAILY_STAGES: ReadonlyArray<readonly [string, Stage]> = [
   ['climate', (c) => runClimate(c.state, c.day)],
-  ['ecology', () => { /* ecology runs inside agriculture/fertility until Stage 3.1 adds per-cell work */ }],
-  ['fertility', () => { /* soil recovery is driven by the vegetation pass in Stage 3.1 */ }],
+  ['ecology', (c) => runEcology(c.state, c.day)],
+  ['labour', (c) => runOccupations(c.state, c.day)],
   ['agriculture', (c) => runProduction(c.state, c.day)],
-  ['extraction', () => { /* extraction shares runProduction: same phase, one pass over settlements */ }],
-  ['craft', () => { /* crafting shares runProduction for the same reason */ }],
+  // extraction, craft, consumption, health and stability are one pass over settlements in
+  // consuming.ts/living.ts; they are listed in the design order and share an owner deliberately.
   ['consumption', (c) => runConsumption(c.state, c.day)],
-  ['health', () => { /* health is updated by consumption from the actual shortfalls */ }],
-  ['demographics', () => { /* demography runs yearly, with ageing (see runDay) */ }],
-  ['stability', () => { /* stability is updated by consumption from the actual shortfalls */ }],
   ['migration', (c) => { if (c.isMonthEnd) runMigration(c.state, c.day); }],
-  ['trade', () => { /* Stage 3.2: routes and tariffs (not implemented yet) */ }],
-  ['build', () => { /* Stage 3.2: infrastructure selection (not implemented yet) */ }],
-  ['military', () => { /* Stage 3.2: manpower and upkeep (not implemented yet) */ }],
-  ['diplomacy', () => { /* Stage 3.2: relations and treaties (not implemented yet) */ }],
-  ['war', () => { /* Stage 3.2: fronts and peace (not implemented yet) */ }],
-  ['settlement-growth', (c) => { if (c.isMonthEnd) runGrowth(c.state, c.day); }],
-  ['civilization', () => { /* Stage 3.2: formation, culture, technology (not implemented yet) */ }],
-  ['events', () => { /* events are emitted by the phases that cause them */ }],
+  ['trade', (c) => runTrade(c.state, c.day)],
+  ['build', (c) => runConstruction(c.state, c.day)],
+  ['military', (c) => runMilitary(c.state, c.day)],
+  ['diplomacy', (c) => runDiplomacyYearly(c.state, c.day)],
+  ['war', (c) => runWar(c.state, c.day)],
+  ['settlement-growth', (c) => runGrowth(c.state, c.day)],
+  ['civilization', (c) => { runResearch(c.state, c.day); runTechSpread(c.state, c.day); runCivYearly(c.state, c.day); }],
   ['chronicle', (c) => runChronicle(c.state, c.day)],
 ];
 

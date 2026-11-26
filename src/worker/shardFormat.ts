@@ -53,6 +53,18 @@ export interface MetaDoc {
     abandonments?: number;
     foodProduced?: number;
     foodConsumed?: number;
+    infraBuilt?: number;
+    routesOpened?: number;
+    routesLost?: number;
+    tradeVolume?: number;
+    tributePaid?: number;
+    taxCollected?: number;
+    warsDeclared?: number;
+    warsEnded?: number;
+    warDeaths?: number;
+    techDiscovered?: number;
+    starvationDeaths?: number;
+    epidemicDeaths?: number;
   };
   rng: RngState[];
   report: GenerationReport;

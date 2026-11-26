@@ -69,6 +69,19 @@ export interface WorldCounters {
   /** cumulative economy flows, for the balance harness and the economy audit */
   foodProduced: number;
   foodConsumed: number;
+  /** Stage 3.2 systems: each of these is written by a real decision, never by the report */
+  infraBuilt: number;
+  routesOpened: number;
+  routesLost: number;
+  tradeVolume: number;
+  tributePaid: number;
+  taxCollected: number;
+  warsDeclared: number;
+  warsEnded: number;
+  warDeaths: number;
+  techDiscovered: number;
+  starvationDeaths: number;
+  epidemicDeaths: number;
 }
 
 export interface GenerationReport {

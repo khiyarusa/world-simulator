@@ -10,6 +10,9 @@
 import { CAPACITY } from '../state/worldState.ts';
 
 export const COHORT_COUNT = 8;
+/** Civilization-major arrays use this fixed stride. It must never follow `civs.count`, or a new
+ * civilization would reinterpret every existing relation and technology row. */
+export const CIV_STRIDE = CAPACITY.civs;
 export const COHORT = {
   CHILDREN: 0,
   YOUTH: 1,
@@ -54,6 +57,38 @@ export const INFRA_COUNT = INFRA.length;
 
 export const EVENT_CAPACITY = 20_000;
 export const DECISION_CAPACITY = 64;
+export const ROUTE_CAPACITY = 400;
+export const TREATY_CAPACITY = 64;
+export const WAR_CAPACITY = 32;
+
+/** Decision kinds recorded by the utility systems (docs/SIMULATION_MODEL.md §7). */
+export const DECISION = {
+  BUILD: 1,
+  TRADE_ROUTE: 2,
+  TREATY: 3,
+  WAR: 4,
+  TECH: 5,
+  FOUND: 6,
+} as const;
+
+/** Treaty kinds (GDD §10.2). Order is part of the persisted format. */
+export const TREATY = {
+  NON_AGGRESSION: 1,
+  TRADE: 2,
+  ALLIANCE: 3,
+  TRIBUTE: 4,
+  BORDER: 5,
+} as const;
+export const TREATY_NAMES = ['none', 'non-aggression', 'trade', 'alliance', 'tribute', 'border'] as const;
+
+/** Technology branches (GDD §8.3): four branches, three tiers, indexed tier-major. */
+export const TECH_BRANCH = { AGRICULTURE: 0, INDUSTRY: 1, MILITARY: 2, CIVIC: 3 } as const;
+export const TECH_NAME = [
+  'agriculture I', 'agriculture II', 'agriculture III',
+  'industry I', 'industry II', 'industry III',
+  'military I', 'military II', 'military III',
+  'civic I', 'civic II', 'civic III',
+] as const;
 
 /** Event types are a closed registry (docs/GDD.md §14). Order is part of the persisted format. */
 export const EVENT_TYPE = {
@@ -77,6 +112,11 @@ export const EVENT_TYPE = {
   FRAGMENTATION: 17,
   COLLAPSE: 18,
   GOLDEN_AGE: 19,
+  INFRA_BUILT: 20,
+  CIV_FORMED: 21,
+  TREATY_BROKEN: 22,
+  TECH_SPREAD: 23,
+  BLIGHT: 24,
 } as const;
 export const EVENT_TYPE_NAMES = [
   'settlement_founded',
@@ -99,6 +139,11 @@ export const EVENT_TYPE_NAMES = [
   'fragmentation',
   'collapse',
   'golden_age',
+  'infra_built',
+  'civ_formed',
+  'treaty_broken',
+  'tech_spread',
+  'blight',
 ] as const;
 
 export const SEVERITY = { TRACE: 1, LOCAL: 2, NOTABLE: 3, MAJOR: 4, HISTORIC: 5 } as const;
@@ -127,6 +172,14 @@ export interface SocietyState {
   foundedDay: Uint32Array;
   /** id of the most recent drought event affecting this settlement, for cause chains */
   lastDroughtEvent: Int32Array;
+  /** id of the most recent famine event, so an epidemic can name its real cause */
+  lastFamineEvent: Int32Array;
+  /** settlements × RES_COUNT local price, per-mille of the base value (250..3000) */
+  price: Uint16Array;
+  /** 0 = self-governed, else the civ index + 1 that currently occupies the settlement */
+  occupier: Uint8Array;
+  /** consecutive months with a food surplus; tier promotion needs two years of it (GDD §7.1) */
+  surplusYears: Uint8Array;
 
   /** civs × 3 culture axes, -100..100 */
   culture: Int8Array;
@@ -137,6 +190,13 @@ export interface SocietyState {
   relation: Int8Array;
   /** civs × civs grievance magnitude */
   grievance: Uint16Array;
+  /** civs × 12 research progress 0..999; the flag in `tech` is the completed node */
+  techProgress: Uint16Array;
+  /** abstract military strength, in manpower units */
+  army: Int32Array;
+  /** war exhaustion 0..100, a real limit on how long a war can continue */
+  exhaustion: Uint8Array;
+  warWins: Uint16Array;
 
   /** regional climate, one entry per region (0..255 on the world grid) */
   regionDroughtMonths: Uint8Array;
@@ -174,6 +234,47 @@ export interface SocietyState {
   chroniclePop: Int32Array;
   chronicleSettlements: Uint16Array;
   chronicleEvents: Uint8Array;
+
+  // --- trade routes: simulation edges, never rendered entities (GDD §9.3)
+  routeCount: number;
+  routeA: Uint16Array;
+  routeB: Uint16Array;
+  /** units per day */
+  routeCapacity: Uint16Array;
+  /** distance in tiles, the cost basis of the tariff */
+  routeLength: Uint16Array;
+  /** per-mille of moved value paid by the buyer to the seller's treasury */
+  routeTariff: Uint8Array;
+  routeCreated: Int32Array;
+  routeVolume: Int32Array;
+  /** consecutive monthly periods with no move; a route that does not trade closes */
+  routeIdle: Uint8Array;
+
+  // --- treaties (GDD §10.2)
+  treatyCount: number;
+  treatyA: Uint8Array;
+  treatyB: Uint8Array;
+  treatyType: Uint8Array;
+  treatyStart: Int32Array;
+  treatyEnd: Int32Array;
+
+  // --- wars (GDD §10.3, §11); the gate values are persisted evidence, not a narrative
+  warCount: number;
+  warA: Uint8Array;
+  warB: Uint8Array;
+  warStart: Int32Array;
+  /** war score, positive = A winning */
+  warScore: Int8Array;
+  warExhaustA: Uint8Array;
+  warExhaustB: Uint8Array;
+  warBattles: Uint16Array;
+  /** event id of the declaration, the cause of every battle */
+  warCause: Int32Array;
+  /** the four gate values at declaration: strength per-mille, grievance, capacity, utility margin */
+  warGateStrength: Uint16Array;
+  warGateGrievance: Uint16Array;
+  warGateCapacity: Uint16Array;
+  warGateUtility: Uint16Array;
 }
 
 export function allocateSociety(): SocietyState {
@@ -193,12 +294,20 @@ export function allocateSociety(): SocietyState {
     flags: new Uint8Array(s),
     foundedDay: new Uint32Array(s),
     lastDroughtEvent: new Int32Array(s),
+    lastFamineEvent: new Int32Array(s),
+    price: new Uint16Array(s * RES_COUNT).fill(1000),
+    occupier: new Uint8Array(s),
+    surplusYears: new Uint8Array(s),
 
     culture: new Int8Array(c * 3),
     tech: new Uint8Array(c * 12),
     legitimacy: new Uint8Array(c).fill(50),
     relation: new Int8Array(c * c),
     grievance: new Uint16Array(c * c),
+    techProgress: new Uint16Array(c * 12),
+    army: new Int32Array(c),
+    exhaustion: new Uint8Array(c),
+    warWins: new Uint16Array(c),
 
     regionDroughtMonths: new Uint8Array(256),
     regionPrecip: new Uint8Array(256).fill(100),
@@ -232,6 +341,37 @@ export function allocateSociety(): SocietyState {
     chroniclePop: new Int32Array(4096),
     chronicleSettlements: new Uint16Array(4096),
     chronicleEvents: new Uint8Array(4096),
+
+    routeCount: 0,
+    routeA: new Uint16Array(ROUTE_CAPACITY),
+    routeB: new Uint16Array(ROUTE_CAPACITY),
+    routeCapacity: new Uint16Array(ROUTE_CAPACITY),
+    routeLength: new Uint16Array(ROUTE_CAPACITY),
+    routeTariff: new Uint8Array(ROUTE_CAPACITY),
+    routeCreated: new Int32Array(ROUTE_CAPACITY),
+    routeVolume: new Int32Array(ROUTE_CAPACITY),
+    routeIdle: new Uint8Array(ROUTE_CAPACITY),
+
+    treatyCount: 0,
+    treatyA: new Uint8Array(TREATY_CAPACITY),
+    treatyB: new Uint8Array(TREATY_CAPACITY),
+    treatyType: new Uint8Array(TREATY_CAPACITY),
+    treatyStart: new Int32Array(TREATY_CAPACITY),
+    treatyEnd: new Int32Array(TREATY_CAPACITY),
+
+    warCount: 0,
+    warA: new Uint8Array(WAR_CAPACITY),
+    warB: new Uint8Array(WAR_CAPACITY),
+    warStart: new Int32Array(WAR_CAPACITY),
+    warScore: new Int8Array(WAR_CAPACITY),
+    warExhaustA: new Uint8Array(WAR_CAPACITY),
+    warExhaustB: new Uint8Array(WAR_CAPACITY),
+    warBattles: new Uint16Array(WAR_CAPACITY),
+    warCause: new Int32Array(WAR_CAPACITY),
+    warGateStrength: new Uint16Array(WAR_CAPACITY),
+    warGateGrievance: new Uint16Array(WAR_CAPACITY),
+    warGateCapacity: new Uint16Array(WAR_CAPACITY),
+    warGateUtility: new Uint16Array(WAR_CAPACITY),
   };
 }
 

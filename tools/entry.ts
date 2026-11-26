@@ -146,16 +146,29 @@ async function balance(): Promise<void> {
   const years = Number(arg('years', '400'));
   const preset = arg('preset', 'medium') as Preset;
   const out = arg('out', '');
-  const report = await runBalance({ seeds, years, preset, peoples: 6 });
+  const report = await runBalance({ seeds, years, preset, peoples: 6, intervention: false });
   const json = JSON.stringify(report, null, 2);
   if (out) writeFileSync(out, `${json}\n`, 'utf8');
   console.log(json);
   const failures = report.seedsDetail.filter((s) => s.invariantFailures.length > 0);
   console.log(
-    `\nbalance: ${report.seeds} seeds x ${report.years}y in ${report.elapsedMs}ms | ` +
+    `\nbalance: ${report.seeds} seeds x ${report.years}y in ${report.elapsedMs}ms (no input) + ` +
+      `${report.interventionReport?.elapsedMs ?? 0}ms (blight) | ` +
       `population min ${report.population.min} median ${report.population.median} max ${report.population.max} | ` +
       `invariant failures ${report.failures} | seeds with failures ${failures.length}`,
   );
+  for (const [arc, hits] of Object.entries(report.arcHits)) console.log(`arc ${arc}: ${hits}/${report.seeds}`);
+  for (const [arc, hits] of Object.entries(report.interventionReport?.arcHits ?? {})) {
+    console.log(`arc(blight) ${arc}: ${hits}/${report.seeds}`);
+  }
+  const inBand = report.seedsDetail.filter((s) => s.finalPopulation >= 150_000 && s.finalPopulation <= 800_000).length;
+  const saves = report.seedsDetail.map((s) => s.saveBytesRaw).sort((a, b) => a - b);
+  const p95 = report.seedsDetail.map((s) => s.tickP95).sort((a, b) => a - b);
+  console.log(`in band 150k-800k: ${inBand}/${report.seeds}`);
+  console.log(`save raw median ${Math.round((saves[Math.floor(saves.length / 2)] ?? 0) / 1024)} KiB, max ${Math.round((saves[saves.length - 1] ?? 0) / 1024)} KiB`);
+  console.log(`tick p95 median ${p95[Math.floor(p95.length / 2)] ?? 0} ms, max ${p95[p95.length - 1] ?? 0} ms`);
+  const wars = report.seedsDetail.reduce((n, s) => n + s.warSamples.length, 0);
+  console.log(`wars sampled ${wars}, all gates pass: ${report.seedsDetail.every((s) => s.warSamples.every((w) => w.gatePass))}`);
 }
 
 function round(v: number): number {

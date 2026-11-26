@@ -1,8 +1,9 @@
 /**
  * Save schema migrations (docs/SAVE_AND_DATA_MODEL.md §7).
  *
- * Migrations are pure document transforms applied in order, never deleted. Schema 1 is the first
- * shipped shape, so the table is currently empty — that is a fact, not a placeholder.
+ * Migrations are pure document transforms applied in order, never deleted. Each one returns a document
+ * stamped with exactly the next version; the loop verifies that, so a migration cannot silently skip a
+ * step (which is what the previous 1 -> 2 entry did after the loop incremented the version again).
  */
 import { MIN_SUPPORTED_SCHEMA, SAVE_SCHEMA_VERSION } from '../core/saveSchema.ts';
 import { SimError } from '../core/errors.ts';
@@ -17,6 +18,12 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * This entry exists so `migrateDoc()` does not reject a valid v1 world at startup (defect H-14).
    */
   1: (doc) => ({ ...doc, schemaVersion: 2 }),
+  /**
+   * 2 -> 3: trade routes, treaties, wars, military state, prices, technology progress and the
+   * occupation marker are added to the save *payload*. A schema-2 world is a world that predates them,
+   * so the decoder fills those structures as empty (the codec keeps accepting v2 blocks).
+   */
+  2: (doc) => ({ ...doc, schemaVersion: 3 }),
 };
 
 export function migrateDoc(doc: WorldDoc): WorldDoc {
@@ -28,12 +35,14 @@ export function migrateDoc(doc: WorldDoc): WorldDoc {
   }
   let current = doc;
   while (current.schemaVersion < SAVE_SCHEMA_VERSION) {
-    const migration = MIGRATIONS[current.schemaVersion];
-    if (!migration) {
-      throw new SimError('UNSUPPORTED_VERSION', `no migration from schema ${current.schemaVersion}`);
+    const from = current.schemaVersion;
+    const migration = MIGRATIONS[from];
+    if (!migration) throw new SimError('UNSUPPORTED_VERSION', `no migration from schema ${from}`);
+    const next = migration(current);
+    if (next.schemaVersion !== from + 1) {
+      throw new SimError('SAVE_CORRUPT', `migration ${from} produced schema ${next.schemaVersion}`);
     }
-    current = migration(current);
-    current = { ...current, schemaVersion: current.schemaVersion + 1 };
+    current = next;
   }
   return current;
 }

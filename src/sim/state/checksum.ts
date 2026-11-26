@@ -1,5 +1,6 @@
 import { crc32, crc32OfU32 } from '../../core/crc32.ts';
 import { GRID_KEYS } from './worldState.ts';
+import { CIV_STRIDE } from '../society/state.ts';
 import { presetIdOf } from '../world/presets.ts';
 import type { WorldState } from './worldState.ts';
 
@@ -10,16 +11,23 @@ import type { WorldState } from './worldState.ts';
  * in `water` or in where their random streams stand are *not* the same world, and a checksum that
  * cannot see that difference cannot detect the corruption it exists to detect.
  *
+ * Version 5 covers the complete persisted society: every stock, capacity, carry, occupation share,
+ * price, culture axis, technology flag and research progress, relation and grievance, climate cell,
+ * trade route, treaty, war (including the four gate values), event, decision and chronicle row.
+ * Hashing only a head entry would let a save lose history and still "verify".
+ *
  * Field order is frozen. Everything hashed here is deterministic persisted state; nothing here is
  * transient (no render, camera, UI, timing or report data).
  */
-export const CHECKSUM_CONTRACT_VERSION = 4;
+export const CHECKSUM_CONTRACT_VERSION = 5;
 
-const CHECKSUM_DOMAIN = 0x43534d34; // "CSM4"
+const CHECKSUM_DOMAIN = 0x43534d35; // "CSM5"
 
 function bytesOf(view: Int16Array | Int8Array | Uint8Array | Uint16Array): Uint8Array {
   return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
 }
+
+const u8 = (v: number): number => v & 0xff;
 
 /**
  * CRC over every persisted grid, in the frozen GRID_KEYS order.
@@ -36,8 +44,8 @@ export function gridsChecksum(state: WorldState): number {
 }
 
 /**
- * Full world checksum: grids + clock + entity stores + recipe identity + RNG states.
- * Called on save and by determinism tests, never per tick.
+ * Full world checksum: grids + clock + entity stores + recipe identity + RNG states + the complete
+ * society block. Called on save and by determinism tests, never per tick.
  */
 export function worldChecksum(state: WorldState): number {
   let crc = crc32OfU32(gridsChecksum(state), CHECKSUM_DOMAIN);
@@ -56,9 +64,28 @@ export function worldChecksum(state: WorldState): number {
   crc = crc32OfU32(crc, state.recipe.peoples);
 
   // --- clock and counters that must survive a reload exactly
-  crc = crc32OfU32(crc, state.counters.settlementsFounded);
-  crc = crc32OfU32(crc, state.counters.ticks);
-  crc = crc32OfU32(crc, state.counters.droppedTicks);
+  const k = state.counters;
+  crc = crc32OfU32(crc, k.settlementsFounded);
+  crc = crc32OfU32(crc, k.ticks);
+  crc = crc32OfU32(crc, k.droppedTicks);
+  crc = crc32OfU32(crc, k.births);
+  crc = crc32OfU32(crc, k.deaths);
+  crc = crc32OfU32(crc, k.migrants);
+  crc = crc32OfU32(crc, k.abandonments);
+  crc = crc32OfU32(crc, k.foodProduced);
+  crc = crc32OfU32(crc, k.foodConsumed);
+  crc = crc32OfU32(crc, k.infraBuilt);
+  crc = crc32OfU32(crc, k.routesOpened);
+  crc = crc32OfU32(crc, k.routesLost);
+  crc = crc32OfU32(crc, k.tradeVolume);
+  crc = crc32OfU32(crc, k.tributePaid);
+  crc = crc32OfU32(crc, k.taxCollected);
+  crc = crc32OfU32(crc, k.warsDeclared);
+  crc = crc32OfU32(crc, k.warsEnded);
+  crc = crc32OfU32(crc, k.warDeaths);
+  crc = crc32OfU32(crc, k.techDiscovered);
+  crc = crc32OfU32(crc, k.starvationDeaths);
+  crc = crc32OfU32(crc, k.epidemicDeaths);
 
   // --- RNG: a resumed world must have the same stream positions as an uninterrupted one
   crc = crc32OfU32(crc, state.rngStates.length);
@@ -81,50 +108,125 @@ export function worldChecksum(state: WorldState): number {
     crc = crc32OfU32(crc, s.foundedDay[i] ?? 0);
   }
 
-  // --- Stage 3 society: cohorts, stocks, social state and the event tail
+  // --- society: settlements
   const soc = state.society;
-  crc = crc32OfU32(crc, soc.eventCount);
-  crc = crc32OfU32(crc, soc.nextEventId);
   for (let i = 0; i < state.settlements.count; i++) {
-    let pop = 0;
-    for (let k = 0; k < 8; k++) pop += soc.cohorts[i * 8 + k] ?? 0;
-    crc = crc32OfU32(crc, pop);
-    crc = crc32OfU32(crc, soc.health[i] ?? 0);
-    crc = crc32OfU32(crc, soc.stability[i] ?? 0);
-    crc = crc32OfU32(crc, soc.treasury[i] ?? 0);
-    crc = crc32OfU32(crc, soc.infra[i] ?? 0);
-    crc = crc32OfU32(crc, soc.flags[i] ?? 0);
-    crc = crc32OfU32(crc, soc.literacy[i] ?? 0);
+    for (let c = 0; c < 8; c++) crc = crc32OfU32(crc, soc.cohorts[i * 8 + c] ?? 0);
+    for (let kk = 0; kk < 5; kk++) crc = crc32OfU32(crc, soc.occShare[i * 5 + kk] ?? 0);
     for (let r = 0; r < 6; r++) {
       crc = crc32OfU32(crc, soc.stock[i * 6 + r] ?? 0);
       crc = crc32OfU32(crc, soc.cap[i * 6 + r] ?? 0);
       crc = crc32OfU32(crc, soc.carry[i * 6 + r] ?? 0);
+      crc = crc32OfU32(crc, soc.price[i * 6 + r] ?? 0);
     }
-    for (let k = 0; k < 5; k++) crc = crc32OfU32(crc, soc.occShare[i * 5 + k] ?? 0);
+    crc = crc32OfU32(crc, soc.treasury[i] ?? 0);
+    crc = crc32OfU32(crc, soc.health[i] ?? 0);
+    crc = crc32OfU32(crc, soc.stability[i] ?? 0);
+    crc = crc32OfU32(crc, soc.literacy[i] ?? 0);
+    crc = crc32OfU32(crc, soc.infra[i] ?? 0);
+    crc = crc32OfU32(crc, soc.flags[i] ?? 0);
+    crc = crc32OfU32(crc, soc.occupier[i] ?? 0);
+    crc = crc32OfU32(crc, soc.surplusYears[i] ?? 0);
+    crc = crc32OfU32(crc, soc.foundedDay[i] ?? 0);
+    crc = crc32OfU32(crc, soc.lastDroughtEvent[i] ?? 0);
+    crc = crc32OfU32(crc, soc.lastFamineEvent[i] ?? 0);
   }
 
+  // --- society: civilizations
   for (let c = 0; c < state.civs.count; c++) {
     crc = crc32OfU32(crc, soc.legitimacy[c] ?? 0);
-    for (let a = 0; a < 3; a++) crc = crc32OfU32(crc, (soc.culture[c * 3 + a] ?? 0) & 0xff);
-    for (let t = 0; t < 12; t++) crc = crc32OfU32(crc, soc.tech[c * 12 + t] ?? 0);
-    for (let o = 0; o < state.civs.count; o++) {
-      crc = crc32OfU32(crc, (soc.relation[c * state.civs.count + o] ?? 0) & 0xff);
+    crc = crc32OfU32(crc, soc.army[c] ?? 0);
+    crc = crc32OfU32(crc, soc.exhaustion[c] ?? 0);
+    crc = crc32OfU32(crc, soc.warWins[c] ?? 0);
+    for (let a = 0; a < 3; a++) crc = crc32OfU32(crc, u8(soc.culture[c * 3 + a] ?? 0));
+    for (let t = 0; t < 12; t++) {
+      crc = crc32OfU32(crc, soc.tech[c * 12 + t] ?? 0);
+      crc = crc32OfU32(crc, soc.techProgress[c * 12 + t] ?? 0);
+    }
+    for (let o = 0; o < CIV_STRIDE; o++) {
+      crc = crc32OfU32(crc, u8(soc.relation[c * CIV_STRIDE + o] ?? 0));
+      crc = crc32OfU32(crc, soc.grievance[c * CIV_STRIDE + o] ?? 0);
     }
   }
 
+  // --- climate and all bounded structures
   for (let r = 0; r < 16; r++) {
     crc = crc32OfU32(crc, soc.regionPrecip[r] ?? 0);
     crc = crc32OfU32(crc, soc.regionDroughtMonths[r] ?? 0);
-    crc = crc32OfU32(crc, (soc.regionTempAnomaly[r] ?? 0) & 0xff);
+    crc = crc32OfU32(crc, u8(soc.regionTempAnomaly[r] ?? 0));
   }
+
+  crc = crc32OfU32(crc, soc.routeCount);
+  for (let i = 0; i < soc.routeCount; i++) {
+    crc = crc32OfU32(crc, soc.routeA[i] ?? 0);
+    crc = crc32OfU32(crc, soc.routeB[i] ?? 0);
+    crc = crc32OfU32(crc, soc.routeCapacity[i] ?? 0);
+    crc = crc32OfU32(crc, soc.routeLength[i] ?? 0);
+    crc = crc32OfU32(crc, soc.routeTariff[i] ?? 0);
+    crc = crc32OfU32(crc, soc.routeCreated[i] ?? 0);
+    crc = crc32OfU32(crc, soc.routeVolume[i] ?? 0);
+    crc = crc32OfU32(crc, soc.routeIdle[i] ?? 0);
+  }
+
+  crc = crc32OfU32(crc, soc.treatyCount);
+  for (let i = 0; i < soc.treatyCount; i++) {
+    crc = crc32OfU32(crc, soc.treatyA[i] ?? 0);
+    crc = crc32OfU32(crc, soc.treatyB[i] ?? 0);
+    crc = crc32OfU32(crc, soc.treatyType[i] ?? 0);
+    crc = crc32OfU32(crc, soc.treatyStart[i] ?? 0);
+    crc = crc32OfU32(crc, soc.treatyEnd[i] ?? 0);
+  }
+
+  crc = crc32OfU32(crc, soc.warCount);
+  for (let i = 0; i < soc.warCount; i++) {
+    crc = crc32OfU32(crc, soc.warA[i] ?? 0);
+    crc = crc32OfU32(crc, soc.warB[i] ?? 0);
+    crc = crc32OfU32(crc, soc.warStart[i] ?? 0);
+    crc = crc32OfU32(crc, u8(soc.warScore[i] ?? 0));
+    crc = crc32OfU32(crc, soc.warExhaustA[i] ?? 0);
+    crc = crc32OfU32(crc, soc.warExhaustB[i] ?? 0);
+    crc = crc32OfU32(crc, soc.warBattles[i] ?? 0);
+    crc = crc32OfU32(crc, soc.warCause[i] ?? 0);
+    crc = crc32OfU32(crc, soc.warGateStrength[i] ?? 0);
+    crc = crc32OfU32(crc, soc.warGateGrievance[i] ?? 0);
+    crc = crc32OfU32(crc, soc.warGateCapacity[i] ?? 0);
+    crc = crc32OfU32(crc, soc.warGateUtility[i] ?? 0);
+  }
+
+  // every persisted history row, oldest -> newest, so a dropped or reordered row is visible
+  crc = crc32OfU32(crc, soc.eventCount);
+  crc = crc32OfU32(crc, soc.nextEventId);
+  for (let n = 0; n < soc.eventCount; n++) {
+    const i = (soc.eventHead - soc.eventCount + n + soc.eventId.length * 2) % soc.eventId.length;
+    crc = crc32OfU32(crc, soc.eventId[i] ?? 0);
+    crc = crc32OfU32(crc, soc.eventDay[i] ?? 0);
+    crc = crc32OfU32(crc, soc.eventType[i] ?? 0);
+    crc = crc32OfU32(crc, soc.eventSeverity[i] ?? 0);
+    crc = crc32OfU32(crc, soc.eventPlace[i] ?? 0);
+    crc = crc32OfU32(crc, soc.eventActorA[i] ?? 0);
+    crc = crc32OfU32(crc, soc.eventActorB[i] ?? 0);
+    crc = crc32OfU32(crc, soc.eventMagnitude[i] ?? 0);
+    crc = crc32OfU32(crc, soc.eventCause[i] ?? 0);
+  }
+
   crc = crc32OfU32(crc, soc.decisionCount);
+  for (let n = 0; n < soc.decisionCount; n++) {
+    const i = (soc.decisionHead - soc.decisionCount + n + soc.decisionDay.length * 2) % soc.decisionDay.length;
+    crc = crc32OfU32(crc, soc.decisionDay[i] ?? 0);
+    crc = crc32OfU32(crc, soc.decisionKind[i] ?? 0);
+    crc = crc32OfU32(crc, soc.decisionActor[i] ?? 0);
+    crc = crc32OfU32(crc, soc.decisionChosen[i] ?? 0);
+    crc = crc32OfU32(crc, soc.decisionScore[i] ?? 0);
+  }
+
   crc = crc32OfU32(crc, soc.chronicleCount);
-  // the event ring's head entry is enough to detect a dropped or reordered history
-  if (soc.eventCount > 0) {
-    const head = (soc.eventHead - 1 + soc.eventId.length) % soc.eventId.length;
-    crc = crc32OfU32(crc, soc.eventId[head] ?? 0);
-    crc = crc32OfU32(crc, soc.eventDay[head] ?? 0);
-    crc = crc32OfU32(crc, soc.eventType[head] ?? 0);
+  for (let n = 0; n < soc.chronicleCount; n++) {
+    const i = (soc.chronicleHead - soc.chronicleCount + n + 8192) % 4096;
+    crc = crc32OfU32(crc, soc.chronicleYear[i] ?? 0);
+    crc = crc32OfU32(crc, soc.chronicleCiv[i] ?? 0);
+    crc = crc32OfU32(crc, soc.chroniclePop[i] ?? 0);
+    crc = crc32OfU32(crc, soc.chronicleSettlements[i] ?? 0);
+    crc = crc32OfU32(crc, soc.chronicleEvents[i] ?? 0);
   }
 
   const c = state.civs;

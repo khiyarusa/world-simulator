@@ -6,8 +6,7 @@
  * `Math.random`, no renderer. Fractions are carried per settlement and resource so that 144,000 daily
  * steps conserve to the unit instead of drifting.
  */
-import { Rng, STREAM, STREAM_IDS } from '../../core/rng.ts';
-import type { RngState, StreamId } from '../../core/rng.ts';
+import { STREAM } from '../../core/rng.ts';
 import { mulDiv } from '../../core/math.ts';
 import { calendarOf, DAYS_PER_MONTH, DAYS_PER_YEAR } from '../../core/clock.ts';
 import type { WorldState } from '../state/worldState.ts';
@@ -50,22 +49,11 @@ export const RULE = {
 const SEASON_YIELD_PM = [500, 800, 1100, 1000] as const;
 
 import { FLAG_DROUGHT, FLAG_RUINED, FLAG_STARVING, isAlive } from './common.ts';
+import { withStream } from './streams.ts';
 
 export { isAlive } from './common.ts';
 
-function streamIndex(stream: StreamId): number {
-  return STREAM_IDS.indexOf(stream);
-}
-
-/** Run `fn` with a persisted stream, then store the advanced state. */
-function withRng(world: WorldState, stream: StreamId, fn: (rng: Rng) => void): void {
-  const index = streamIndex(stream);
-  const state: RngState | undefined = world.rngStates[index];
-  if (!state) return;
-  const rng = new Rng(state);
-  fn(rng);
-  world.rngStates[index] = rng.state;
-}
+const withRng = withStream;
 
 function fertilePm(world: WorldState, settlement: number): number {
   const s = world.settlements;
@@ -77,7 +65,13 @@ function fertilePm(world: WorldState, settlement: number): number {
 function hasWaterAccess(world: WorldState, settlement: number): boolean {
   const s = world.settlements;
   const i = (s.y[settlement] ?? 0) * world.width + (s.x[settlement] ?? 0);
-  return (world.grids.riverId[i] ?? 0) > 0 || (world.grids.lakeId[i] ?? 0) > 0 || ((world.society.infra[settlement] ?? 0) & (1 << 1)) !== 0;
+  const infra = world.society.infra[settlement] ?? 0;
+  return (
+    (world.grids.riverId[i] ?? 0) > 0 ||
+    (world.grids.lakeId[i] ?? 0) > 0 ||
+    (infra & (1 << 1)) !== 0 || // well
+    (infra & (1 << 9)) !== 0 // aqueduct
+  );
 }
 
 // ------------------------------------------------------------------ climate (monthly)
@@ -152,12 +146,17 @@ export function runProduction(world: WorldState, day: number): void {
     // capacity of its own tiles, which is what gives a settlement a carrying capacity at all.
     const landCap = 220 + (world.grids.fertility[(s.y[i] ?? 0) * world.width + (s.x[i] ?? 0)] ?? 0) * 20;
     const landPm = pop > 0 ? Math.min(1000, Math.max(300, Math.floor((landCap * 1000) / pop))) : 1000;
+    const civ = s.civ[i] ?? 0;
+    const agriTech = (soc.tech[civ * 12] ?? 0) + (soc.tech[civ * 12 + 1] ?? 0) + (soc.tech[civ * 12 + 2] ?? 0);
+    const indTech = (soc.tech[civ * 12 + 3] ?? 0) + (soc.tech[civ * 12 + 4] ?? 0) + (soc.tech[civ * 12 + 5] ?? 0);
     let milli = farmers * 6000;
     milli = mulDiv(milli, seasonal, 1000);
     milli = mulDiv(milli, drought ? 400 : 1000, 1000);
     milli = mulDiv(milli, fertilePm(world, i), 1000);
     milli = mulDiv(milli, landPm, 1000);
+    milli = mulDiv(milli, 1000 + agriTech * 80, 1000);
     if (infraHas(soc, i, INFRA.indexOf('irrigation'))) milli = mulDiv(milli, 1150, 1000);
+    if ((soc.occupier[i] ?? 0) !== 0) milli = mulDiv(milli, 800, 1000); // an occupied settlement produces less
     flow(world, i, RES.FOOD, milli);
 
     // --- water: local source or a well; a dry settlement cannot sustain its people
@@ -167,13 +166,16 @@ export function runProduction(world: WorldState, day: number): void {
     // --- fuel and materials from the actual resource mask at the settlement tile
     const tile = (s.y[i] ?? 0) * world.width + (s.x[i] ?? 0);
     const mask = world.grids.resource[tile] ?? 0;
-    flow(world, i, RES.WOOD, extractors * ((mask & 4) !== 0 ? 3000 : 1500));
-    flow(world, i, RES.STONE, extractors * ((mask & 1) !== 0 ? 2000 : 0));
-    flow(world, i, RES.METAL, extractors * ((mask & 2) !== 0 ? 1200 : 0));
+    const extraction = mulDiv(1000 + indTech * 80, (soc.occupier[i] ?? 0) !== 0 ? 800 : 1000, 1000);
+    flow(world, i, RES.WOOD, mulDiv(extractors * ((mask & 4) !== 0 ? 3000 : 1500), extraction, 1000));
+    flow(world, i, RES.STONE, mulDiv(extractors * ((mask & 1) !== 0 ? 2000 : 0), extraction, 1000));
+    flow(world, i, RES.METAL, mulDiv(extractors * ((mask & 2) !== 0 ? 1200 : 0), extraction, 1000));
 
     // --- craft: goods need metal and wood, one unit of each per two goods
     if (crafters > 0) {
-      const wanted = crafters * 500; // milli-goods/day
+      let wanted = crafters * 500; // milli-goods/day
+      if (infraHas(soc, i, INFRA.indexOf('workshop'))) wanted = mulDiv(wanted, 1250, 1000);
+      wanted = mulDiv(wanted, 1000 + indTech * 100, 1000);
       const metalAvail = stockOf(soc, i, RES.METAL) * 1000;
       const woodAvail = stockOf(soc, i, RES.WOOD) * 1000;
       const buildable = Math.min(wanted, metalAvail, woodAvail);
@@ -227,6 +229,7 @@ export function runConsumption(world: WorldState, day: number): void {
     if (fuelShortfall > 0) health -= 1;
     health -= Math.floor(densityPm / 60);
     if (infraHas(soc, i, INFRA.indexOf('well'))) health += 1;
+    if (infraHas(soc, i, INFRA.indexOf('aqueduct'))) health += 2;
     if (infraHas(soc, i, INFRA.indexOf('temple'))) health += 1;
     soc.health[i] = health < 0 ? 0 : health > 100 ? 100 : health;
 
@@ -236,6 +239,8 @@ export function runConsumption(world: WorldState, day: number): void {
     stability += health >= 60 ? 1 : -1;
     if (pop > 20_000) stability -= 2;
     else if (pop > 5_000) stability -= 1;
+    if ((soc.occupier[i] ?? 0) !== 0) stability -= 2;
+    if (infraHas(soc, i, INFRA.indexOf('temple'))) stability += 1;
     if ((soc.treasury[i] ?? 0) < 0) stability -= 1;
     soc.stability[i] = stability < 0 ? 0 : stability > 100 ? 100 : stability;
 
@@ -244,8 +249,20 @@ export function runConsumption(world: WorldState, day: number): void {
     const flags = soc.flags[i] ?? 0;
     if (starving && (flags & FLAG_STARVING) === 0) {
       soc.flags[i] = flags | FLAG_STARVING;
-      const cause = soc.lastDroughtEvent[i] ?? 0;
-      appendEvent(world.society, day, EVENT_TYPE.FAMINE, SEVERITY.MAJOR, i, s.civ[i] ?? 0, 0, foodShortfall, cause);
+      // a drought is the cause when there was one; otherwise the famine is an explicit root
+      const droughtCause = soc.lastDroughtEvent[i] ?? 0;
+      const cause = droughtCause > 0 ? droughtCause : -1;
+      soc.lastFamineEvent[i] = appendEvent(
+        world.society,
+        day,
+        EVENT_TYPE.FAMINE,
+        SEVERITY.MAJOR,
+        i,
+        s.civ[i] ?? 0,
+        0,
+        foodShortfall,
+        cause,
+      );
     } else if (!starving && (flags & FLAG_STARVING) !== 0) {
       soc.flags[i] = flags & ~FLAG_STARVING;
     }
@@ -315,6 +332,7 @@ export function runDemographics(world: WorldState): void {
     // settlement where the requested deaths exceed the people available
     world.counters.births += births;
     world.counters.deaths += deaths - remaining + starved;
+    world.counters.starvationDeaths += starved;
   }
 }
 

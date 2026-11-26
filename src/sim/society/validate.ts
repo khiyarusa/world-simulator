@@ -7,7 +7,15 @@
  */
 import { SimError } from '../../core/errors.ts';
 import type { WorldState } from '../state/worldState.ts';
-import { COHORT_COUNT, RES_COUNT, type SocietyState } from './state.ts';
+import {
+  COHORT_COUNT,
+  CIV_STRIDE,
+  RES_COUNT,
+  ROUTE_CAPACITY,
+  TREATY_CAPACITY,
+  WAR_CAPACITY,
+  type SocietyState,
+} from './state.ts';
 
 const fail = (msg: string): never => {
   throw new SimError('SAVE_CORRUPT', `society: ${msg}`);
@@ -43,6 +51,11 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     if ((s.health[i] ?? 0) > 100) fail(`settlement ${i} health out of range`);
     if ((s.stability[i] ?? 0) > 100) fail(`settlement ${i} stability out of range`);
     if (((s.infra[i] ?? 0) & ~0xfff) !== 0) fail(`settlement ${i} has unknown infrastructure bits`);
+    if ((s.occupier[i] ?? 0) > civs) fail(`settlement ${i} is occupied by an unknown civ`);
+    for (let r = 0; r < RES_COUNT; r++) {
+      const price = s.price[i * RES_COUNT + r] ?? 0;
+      if (price < 250 || price > 3000) fail(`settlement ${i} price ${r} is ${price}`);
+    }
   }
 
   for (let c = 0; c < civs; c++) {
@@ -54,9 +67,12 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     for (let t = 0; t < 12; t++) {
       const v = s.tech[c * 12 + t] ?? 0;
       if (v > 1) fail(`civ ${c} technology ${t} is ${v}`);
+      if ((s.techProgress[c * 12 + t] ?? 0) > 1000) fail(`civ ${c} research progress ${t} out of range`);
     }
-    for (let other = 0; other < civs; other++) {
-      const rel = s.relation[c * civs + other] ?? 0;
+    if ((s.army[c] ?? 0) < 0) fail(`civ ${c} has a negative army`);
+    if ((s.exhaustion[c] ?? 0) > 100) fail(`civ ${c} exhaustion out of range`);
+    for (let other = 0; other < CIV_STRIDE; other++) {
+      const rel = s.relation[c * CIV_STRIDE + other] ?? 0;
       if (rel < -100 || rel > 100) fail(`relation ${c}->${other} is ${rel}`);
     }
   }
@@ -66,7 +82,9 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     const id = s.eventId[k] ?? 0;
     if (id <= 0 || ids.has(id)) fail(`event id ${id} is not unique and positive`);
     const cause = s.eventCause[k] ?? 0;
-    if (cause !== 0 && !ids.has(cause)) fail(`event ${id} references a cause that does not exist yet (${cause})`);
+    if (cause !== 0 && cause !== -1 && !ids.has(cause)) {
+      fail(`event ${id} references a cause that does not exist yet (${cause})`);
+    }
     const day = s.eventDay[k] ?? 0;
     if (day < 1) fail(`event ${id} has day ${day}`);
     ids.add(id);
@@ -75,6 +93,41 @@ export function validateSociety(world: WorldState, s: SocietyState): void {
     let maxId = 0;
     for (let k = 0; k < s.eventCount; k++) maxId = Math.max(maxId, s.eventId[k] ?? 0);
     if (s.nextEventId <= maxId) fail(`next event id ${s.nextEventId} would reuse an existing id`);
+  }
+
+  if (s.routeCount > ROUTE_CAPACITY) fail(`route count ${s.routeCount} over capacity`);
+  for (let k = 0; k < s.routeCount; k++) {
+    const a = s.routeA[k] ?? 0;
+    const b = s.routeB[k] ?? 0;
+    if (a === b) fail(`route ${k} has identical endpoints`);
+    if (a >= settlements || b >= settlements) fail(`route ${k} references a missing settlement`);
+    if ((s.routeCapacity[k] ?? 0) === 0) fail(`route ${k} has no capacity`);
+    if ((s.routeTariff[k] ?? 0) >= 1000) fail(`route ${k} tariff is not a per-mille`);
+  }
+
+  if (s.treatyCount > TREATY_CAPACITY) fail(`treaty count ${s.treatyCount} over capacity`);
+  for (let k = 0; k < s.treatyCount; k++) {
+    const a = s.treatyA[k] ?? 0;
+    const b = s.treatyB[k] ?? 0;
+    if (a === b) fail(`treaty ${k} has identical participants`);
+    if (a >= civs || b >= civs) fail(`treaty ${k} references a missing civilization`);
+    const type = s.treatyType[k] ?? 0;
+    if (type < 1 || type > 5) fail(`treaty ${k} has unknown type ${type}`);
+    if ((s.treatyEnd[k] ?? 0) <= (s.treatyStart[k] ?? 0)) fail(`treaty ${k} expires before it starts`);
+  }
+
+  if (s.warCount > WAR_CAPACITY) fail(`war count ${s.warCount} over capacity`);
+  for (let k = 0; k < s.warCount; k++) {
+    const a = s.warA[k] ?? 0;
+    const b = s.warB[k] ?? 0;
+    if (a === b) fail(`war ${k} has identical participants`);
+    if (a >= civs || b >= civs) fail(`war ${k} references a missing civilization`);
+    const score = s.warScore[k] ?? 0;
+    if (score < -100 || score > 100) fail(`war ${k} score out of range`);
+    if ((s.warExhaustA[k] ?? 0) > 100 || (s.warExhaustB[k] ?? 0) > 100) fail(`war ${k} exhaustion out of range`);
+    if ((s.warGateStrength[k] ?? 0) < 1250) fail(`war ${k} was declared below the strength gate`);
+    if ((s.warGateGrievance[k] ?? 0) < 40) fail(`war ${k} was declared below the grievance gate`);
+    if ((s.warCause[k] ?? 0) === 0) fail(`war ${k} has no declaration event`);
   }
 
   for (let k = 0; k < s.decisionCount; k++) {
