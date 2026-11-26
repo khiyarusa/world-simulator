@@ -152,9 +152,9 @@ export function runProduction(world: WorldState, day: number): void {
     const civ = s.civ[i] ?? 0;
     const agriTech = (soc.tech[civ * 12] ?? 0) + (soc.tech[civ * 12 + 1] ?? 0) + (soc.tech[civ * 12 + 2] ?? 0);
     const indTech = (soc.tech[civ * 12 + 3] ?? 0) + (soc.tech[civ * 12 + 4] ?? 0) + (soc.tech[civ * 12 + 5] ?? 0);
-    let milli = farmers * 10000;
+    let milli = farmers * 14000;
     milli = mulDiv(milli, seasonal, 1000);
-    milli = mulDiv(milli, drought ? 500 : 1000, 1000);
+    milli = mulDiv(milli, drought ? 600 : 1000, 1000);
     milli = mulDiv(milli, fertilePm(world, i), 1000);
     milli = mulDiv(milli, landPm, 1000);
     milli = mulDiv(milli, 1000 + agriTech * 80, 1000);

@@ -94,7 +94,7 @@ export function runTreasury(world: WorldState): void {
     const pop = populationOf(soc, i);
     // the state's claim on this month's real production: a head levy, collected more efficiently
     // where the settlement is stable. It is income, not a stock transfer, and it is the only faucet.
-    const tax = Math.floor((pop * (600 + (soc.stability[i] ?? 60) * 4)) / 1000);
+    const tax = Math.floor((pop * (1200 + (soc.stability[i] ?? 60) * 4)) / 1000);
     soc.treasury[i] = (soc.treasury[i] ?? 0) + tax;
     world.counters.taxCollected += tax;
     // surplus food above 60 days, at most a tenth per month, is sold at the local price
