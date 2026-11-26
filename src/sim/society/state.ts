@@ -56,9 +56,9 @@ export const INFRA = [
 ] as const;
 export const INFRA_COUNT = INFRA.length;
 
-export const EVENT_CAPACITY = 14_500;
-// (the vital ring below keeps 4096 severe rows; 14.5k + 4k rows keeps the year-200 raw save under
-// 1,200,000 bytes, the strict decimal reading of S3-A7; measured max 1,187 KiB at 15k)
+export const EVENT_CAPACITY = 14_000;
+// (the vital ring below keeps 4096 severe rows; 14k + 4k rows keeps the year-200 raw save under
+// 1,200,000 bytes, the strict decimal reading of S3-A7; measured max 1,172 KiB at 14.5k)
 export const DECISION_CAPACITY = 64;
 export const ROUTE_CAPACITY = 400;
 export const TREATY_CAPACITY = 64;

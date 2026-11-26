@@ -25,7 +25,7 @@ code exists; the gate table states the run that proves it. Stage 4 has not start
 | Civilizations | emergent formation from distant towns, 3 culture axes initialised from land and history and drifting with real behaviour, 12 technology nodes researched from labour/literacy/contact/academies and spread along routes |
 | Diplomacy | relations from routes, borders, cultural distance, war and treaties; decaying grievance memory; five treaty types with duration, proposals, refusals and tribute |
 | War | abstract army with upkeep, the four-condition gate persisted with every declaration, monthly fronts, attrition in real people, occupation, exhaustion, peace with tribute/territory/refugees/route destruction (D-47) |
-| History | 42-event vocabulary (registry), forward causes or the explicit root marker `-1`, a 14,500-event main ring, a 4,096-event vital ring for severity 4/5 and cited causes, real yearly per-civ chronicle |
+| History | 42-event vocabulary (registry), forward causes or the explicit root marker `-1`, a 14,000-event main ring, a 4,096-event vital ring for severity 4/5 and cited causes, real yearly per-civ chronicle |
 | Decision records | build, route, treaty, war, tech and founding decisions stored in a bounded ring with kind, actor, chosen action and score |
 | Persistence | schema v3, real 1→2 and 2→3 migrations, v1/v2 loads, semantic validation, checksum contract v5, the society block inside `meta` (D-44/D-45) |
 | Determinism | named RNG streams only, integer state, fixed iteration order, camera-independent pipeline (D-41), save/load continuation tested |
@@ -91,8 +91,8 @@ The JSON artifact is the evidence for every number in this report.
 | Wars declared / ended | 471 sampled declarations, all four gate values reproduced |
 | Routes | 400 retained at year 400; 1.6k–3.1k opened over 400 years |
 | Technology | all 12 nodes discovered in most seeds |
-| Tick p95 | **0.061 ms median, 0.077 ms max** at 200 settlements / 12 civs |
-| Raw save at year 200 | **1,178 KiB median, 1,187 KiB max** (before the final 14.5k retention trim) |
+| Tick p95 | **0.079 ms median, 0.096 ms max** at 200 settlements / 12 civs |
+| Raw save at year 200 | **1,164 KiB median, 1,172 KiB max** |
 | Save/encode time | 48–63 ms on the CI runner (device load is pending) |
 | Runtime errors | 0 |
 
@@ -118,8 +118,8 @@ no-input run cannot contain player input. Three arc types therefore appear in �
 | **S3-A4** every severity-4+ event has a cause link or root | **PASS** | harness checks every event it observed: 0 failures in 20 seeds; explicit `-1` roots persisted |
 | **S3-A5** sample 20 wars, each reproduces four gate values | **PASS** | 471 declarations sampled; strength/grievance/capacity/utility all persisted and ≥ thresholds |
 | **S3-A6** fixed vs moving camera identical | **PASS** | `tests/determinism/lod.test.ts`: identical checksum, population and event stream with a panning/zooming camera |
-| **S3-A7** save ≤1.2 MB raw; load ≤1 s device | **PASS (size) / PENDING (device load)** | 1,178 KiB median, 1,187 KiB max at year 200; encode 48–63 ms; A23 load not measured |
-| **S3-A8** p95 ≤3 ms full pipeline | **PASS** | 0.061 ms median, 0.077 ms max at 200 settlements / 12 civs, CI runner |
+| **S3-A7** save ≤1.2 MB raw; load ≤1 s device | **PASS (size) / PENDING (device load)** | 1,164 KiB median, 1,172 KiB max at year 200; encode 48–63 ms; A23 load not measured |
+| **S3-A8** p95 ≤3 ms full pipeline | **PASS** | 0.079 ms median, 0.096 ms max at 200 settlements / 12 civs, CI runner |
 
 Supporting gates: 95 tests in 13 files (unit, invariant, determinism, save/migration, LOD A/B,
 persistence), TypeScript strict, ESLint, repo gates, browser E2E, Android build, performance workflow.
@@ -163,7 +163,7 @@ Not performed here (no Galaxy A23 attached). Reproducible protocol (also in
   ≥10/20; (3) the war-gate capacity is a documented 30-day operational interpretation of the GDD's
   one-year figure, not a literal reading; (4) stability/health still fluctuate in the poorest seeds
   (0–38 % starving at year 400), which is a real pressure, not a clamp; (5) the event ring retains
-  14,500 recent events plus 4,096 severe ones, and older history is intentionally gone (D-46).
+  14,000 recent events plus 4,096 severe ones, and older history is intentionally gone (D-46).
 
 ## 10. Workflows and artifacts
 
