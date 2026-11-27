@@ -231,3 +231,23 @@ by construction because the glyphs/icons are generated, and the font has a syste
 
 Total shipped font/asset weight is ~51 KB plus the 4.4 KB licence, far below the 6 MB target. The
 removal is a correctness fix (zero-width text), not a licence or budget shortcut.
+
+---
+
+## 11. Reopened Stage 5 — premium atlas provenance
+
+The premium atlas is **procedural**; there is no downloaded or AI-generated binary art in this
+stage. The art bible is `ART_BIBLE.md`; the technical pixel language is
+`src/render/terrainPaint.ts` and is shared by the overview and detail chunks.
+
+- Terrain and settlements: generated at runtime from the simulation grids and the real `infra`
+  bitfield; source = this repository, licence = project licence.
+- Font: Vazirmatn Regular WOFF2 + OFL (50.7 KB + 4.4 KB). Medium/Bold remain removed (zero-width
+  failure).
+- Icons: inline SVG, 24 px stroke family, no binary icon pack.
+- Quality assets: 1536/1280/1024 overview and 48/96 px-per-tile chunks are generated, not shipped;
+  the APK does not grow with texture packs, but GPU memory does and is budgeted separately.
+- Android texture compression (ASTC/ETC2) is **not applicable** while the atlas is a runtime canvas;
+  it becomes relevant only if an authored texture pipeline is introduced. Mipmap/filter selection
+  remains a device-pass measurement.
+- Rejection and validation: `ART_BIBLE.md` §10; visual evidence in `docs/qa/stewardship/`.

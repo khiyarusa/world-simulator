@@ -3,11 +3,13 @@
 World Simulator — design set for the five-stage build. **Start with `../AGENTS.md`** (the rules), then
 this page (the map), then the two or three documents that own the area you are working on.
 
-Status of the whole set: **Stage 5 software-complete, physical-device pass and release signing pending** (2026-11-26).
+Status of the whole set: **Stage 5 reopened and software-complete (Grand Stewardship Expansion), physical-device pass and release signing pending** (2026-11-27).
 The world engine, living simulation, player experience, six layers, six panels, interventions,
 multi-world management and Persian/English UI are implemented and tested in software. Evidence:
+[`STAGE_5_STEWARDSHIP_REPORT.md`](STAGE_5_STEWARDSHIP_REPORT.md),
 [`STAGE_5_REPORT.md`](STAGE_5_REPORT.md), [`STAGE_4_REPORT.md`](STAGE_4_REPORT.md) and
 [`STAGE_3_REPORT.md`](STAGE_3_REPORT.md); design contracts:
+[`STEWARDSHIP_DESIGN.md`](STEWARDSHIP_DESIGN.md), [`ART_BIBLE.md`](ART_BIBLE.md),
 [`STAGE_5_DESIGN.md`](STAGE_5_DESIGN.md), [`STAGE_4_DESIGN.md`](STAGE_4_DESIGN.md) and
 [`STAGE_3_DESIGN.md`](STAGE_3_DESIGN.md).
 
@@ -34,7 +36,10 @@ multi-world management and Persian/English UI are implemented and tested in soft
 | 16 | [`STAGE_2_1_HARDENING.md`](STAGE_2_1_HARDENING.md) | The 13 verified defects, their root causes, fixes and regression tests, plus what was deliberately not fixed. | before changing determinism, saves, camera or markers |
 | 17 | [`STAGE_3_DESIGN.md`](STAGE_3_DESIGN.md) / [`STAGE_3_REPORT.md`](STAGE_3_REPORT.md) | The living-world contract and its measured evidence. | changing simulation rules or balance |
 | 18 | [`STAGE_4_DESIGN.md`](STAGE_4_DESIGN.md) / [`STAGE_4_REPORT.md`](STAGE_4_REPORT.md) | Player experience contract, schema 4, layer/panel/command design, evidence and remaining device work. | changing UI, queries, commands or saves |
-| 19 | [`STAGE_5_DESIGN.md`](STAGE_5_DESIGN.md) / [`STAGE_5_REPORT.md`](STAGE_5_REPORT.md) | Final visual/UX contract, defect ledger, performance/QA evidence, device/release status. | working on presentation, performance, QA or release |
+| 19 | [`STAGE_5_DESIGN.md`](STAGE_5_DESIGN.md) / [`STAGE_5_REPORT.md`](STAGE_5_REPORT.md) | Living Atlas contract and first-pass evidence. | presenting the map, layers and baseline QA |
+| 20 | [`STEWARDSHIP_DESIGN.md`](STEWARDSHIP_DESIGN.md) / [`STAGE_5_STEWARDSHIP_REPORT.md`](STAGE_5_STEWARDSHIP_REPORT.md) | Campaign, legacies, objectives, charters, schema 5, expansion evidence and open device gates. | changing gameplay, progression, saves or the reopened stage |
+| 21 | [`ART_BIBLE.md`](ART_BIBLE.md) | Premium atlas art direction, materials, settlement language, detail hierarchy and rejection test. | producing or reviewing any terrain/settlement art |
+| 22 | [`qa/stewardship/README.md`](qa/stewardship/README.md) | 13 real campaign and close-detail captures with regeneration instructions. | visual QA of the campaign or atlas |
 
 ## Ownership of facts (one fact, one home)
 

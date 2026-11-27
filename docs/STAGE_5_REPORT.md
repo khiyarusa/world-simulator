@@ -1,4 +1,6 @@
 # STAGE 5 REPORT — THE LIVING ATLAS OVERHAUL
+> **Reopened:** the owner authorized the Grand Stewardship Expansion (D-68). The campaign, schema 5 and multi-resolution atlas are documented in [`STEWARDSHIP_DESIGN.md`](STEWARDSHIP_DESIGN.md) and [`STAGE_5_STEWARDSHIP_REPORT.md`](STAGE_5_STEWARDSHIP_REPORT.md). This file remains the Living Atlas baseline.
+
 
 Status: **software-complete; physical Galaxy A23 pass pending (Stage 5 device gates)**. No device
 measurement is claimed. This report is evidence-based; every number below has a command, artifact or

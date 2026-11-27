@@ -12,12 +12,15 @@ Document status: **Stage 1 baseline v1.0** — binding for Stages 2–5 until ex
 
 ## 1. What this product is
 
-A **living-world sandbox simulator for Android**. The player generates a world, then watches
+A **living-world stewardship game for Android**. The player generates a world, chooses a legacy,
+then guides autonomous civilizations through real crises and long-term chapters — or watches in Free
+Sandbox. The original line describes the sandbox mode:
 settlements, economies, ecologies and civilizations develop, interact, and collapse on their own.
 The player can pause, accelerate, inspect any part of the world, and intervene — but the world does
 not need the player to keep moving.
 
-One sentence: *a pocket-sized world that keeps making history while you watch it.*
+One sentence: *a pocket-sized world that keeps making history, and a steward who can shape what it
+becomes without scripting its people.*
 
 ## 2. What this product is not
 
@@ -32,7 +35,8 @@ One sentence: *a pocket-sized world that keeps making history while you watch it
 
 ## 3. Target player and session shape
 
-- **Primary player:** someone who enjoys watching systems unfold — Dwarf Fortress / Rimworld
+- **Primary player:** someone who wants a readable living world **and** a reason to intervene —
+  Dwarf Fortress / Rimworld
   observers, Civilization players who like the map more than the combat, fans of "ant farm" games.
 - **Session shape:** 3–15 minutes, several times a day, plus occasional 30–60 minute deep sessions.
   The world must be *interesting to return to*: something changed while away (simulated forward on

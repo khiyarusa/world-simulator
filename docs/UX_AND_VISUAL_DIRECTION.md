@@ -350,3 +350,32 @@ instant, keep camera and selection, and rebuild only on change/30 days (politica
 Charts are real series from the worker. Range labels are forced LTR so min/max stay in the correct
 order in Persian. Values are compact only where a full number would clip; labels may take two lines.
 No trend is drawn from less data than exists (one sample is a flat line, zero is an empty state).
+
+---
+
+## 14. Stewardship campaign interface (reopened Stage 5)
+
+The campaign is a **board sheet**, not a seventh layer. It opens over the map from a top-bar legacy
+button or the compact legacy strip; the map remains visible around it and the board can be closed
+without losing selection or camera.
+
+- **Creation:** Stewardship Campaign is the first, accented mode card; Free Sandbox is beside it. A
+  legacy select appears only for the campaign. The world is born paused.
+- **Setup:** the board lists the real civilizations with capital and population; the player chooses
+  the steward people. The simulation starts paused until the player presses play.
+- **Legacy strip:** one line with legacy, era and chapters completed; tappable. It sits below the
+  top bar and never intercepts top-bar controls.
+- **Board hero:** steward, capital, seals, charter slots, era and next chapter with two sustained
+  condition bars and hold count.
+- **Chapters:** five rows; completed chapters are gold, active ones show hold/required days.
+- **Objectives:** active/offer cards with the real target, why, progress against the real goal,
+  deadline, held days, accept/decline and show-on-map. Two active/two offered.
+- **Charters:** active terms with civ and days left; a target civ picker; six charter cards with
+  effect and trade-off; replace toggle; confirm only when the worker can accept.
+- **Metrics:** real measured values and founding baseline.
+- **Conclusion:** a legacy summary with people, years, seals, population and milestones; the world
+  remains playable.
+- **Map marks:** gold steward ring/flag, objective diamonds on real targets, civ-coloured charter
+  halos.
+- **Accessibility:** 48 dp targets, logical properties, RTL, 200 % text, 320 dp sweep, reduced
+  motion, low power. The board scrolls; the map is never the scroll container.

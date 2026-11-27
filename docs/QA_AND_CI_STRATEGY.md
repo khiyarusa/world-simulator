@@ -347,3 +347,22 @@ corruption case, and a fixed-vs-moving-camera A/B test on the real pipeline.
   web build, 13 E2E tests, 31 visual captures, Android APK+AAB, 20×400 balance and 1×500 Large stress.
 
 Current local counts: **117 unit/integration tests in 18 files; 13 E2E; 31 visual captures.**
+
+---
+
+## 14. Reopened Stage 5 QA
+
+- **Campaign tests (12):** all five legacy chains to completion, post-completion save/play, exact
+  charter hooks (×1.15 trade, ×1.20 research, +2 relation, ecology care), a real food-crisis offer
+  and recovery, accept-once, schema-5 round trip, v4 sandbox compatibility, determinism.
+- **Stewardship E2E (2):** campaign creation → choose people → real objective → charter → save/reload;
+  sandbox has no campaign chrome and no campaign state.
+- **Stewardship visual QA (13):** setup, people choice, board, objective offer, charter choice,
+  mature board/map, capital detail, high-detail coast, charter/metrics, 200 % at 320 dp, Persian
+  board/map.
+- **Campaign journey harness:** `tools.js campaign` runs 3 seeds × 50 years with a scripted steward
+  (accepting offers, using food/fertilize powers, issuing charters). `assert-campaign.mjs` requires
+  zero invariant failures, at least three offers and milestone progress; CI uploads the JSON.
+- **Counts:** 129 unit/integration tests in 20 files, 15 E2E, 44 visual captures.
+- **Time budgets:** the 5-day campaign cadence is a tested budget decision; no campaign work runs
+  per tick.

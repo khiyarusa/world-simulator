@@ -237,3 +237,24 @@ finished in Stage 3), `audio-design` (audio is P1 and not implemented), `physics
 
 Not loaded: `game-ai`, `ai-behavior-trees-utility-ai` (simulation AI complete), `audio-design` (P1
 not implemented), `physics-tuning`, `shader-programming` (no shader work).
+
+---
+
+## 9. Reopened Stage 5 — sources actually used
+
+| Source | Inspected | Licence | Concrete effect |
+|---|---|---|---|
+| `gamedev-router` | vendored | Apache-2.0 | Fingerprinted PixiJS 8 + worker + IndexedDB; routed to pixijs-rendering, game-ui-ux, performance, save-systems; no engine change |
+| `pixijs-rendering` | vendored | Apache-2.0 | Container layering, one ticker, `CanvasSource` textures, explicit `destroy`; world-space chunk container |
+| `game-ui-ux` | vendored | Apache-2.0 | Board overlay + safe areas + wrapping tabs + 320/390/412 + 200 % verification |
+| `performance-optimization` | vendored | Apache-2.0 | Measure first; 5-day campaign cadence; 10-texture LRU; no per-frame rebuild |
+| `save-systems` | vendored | Apache-2.0 | Schema stamp, ordered migration, defensive decode, round-trip stress |
+| `create-game-assets` | vendored | Apache-2.0 | Art bible, provenance and rejection test; procedural-only decision |
+| ForgeSkills | GitHub README `main`, 2026-11-27 | Apache-2.0 | Adopted the gated `measure → build → render → compare → fix one cause` loop and "artifact, not a status line". Its Godot/Unity/Blender tools were **not** run (wrong engine/no 3D need) |
+| Red Blob Mapgen4 | 2018–2025 notes, 2026-11-27 | methods only, no code copied | Hand-drawn survey look: side-view relief cues, smooth coast/river outlines, contour ink, biome materials |
+| PixiJS performance guide | URL consulted; empty response | MIT | Used the vendored pixijs-rendering guidance for the same principles; no unverified API claim from the empty fetch |
+| Android texture guidance | developer.android.com | guidance | Atlas/filter/compression principles; ASTC/ETC2 recorded N/A for a runtime canvas, mipmaps/filtering a device item |
+| MDA | AAAI WS04-04-001 | citation | The mechanic table in `STEWARDSHIP_DESIGN.md` §2 |
+
+Rejected: Blender/MCP (no 3D asset), ForgeSkills Godot/Unity procedures (wrong engine), audio and
+shader skills (no work in those systems), runtime LLM AI (explicitly out of scope).

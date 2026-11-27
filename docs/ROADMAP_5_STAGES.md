@@ -225,7 +225,7 @@ stage now adds the Stewardship Campaign, five legacy paths, dynamic world-state 
 charters that alter real utility decisions, campaign persistence (schema 5), a multi-resolution
 premium atlas, richer settlements and a matching QA suite. Exactly five stages still exist (D-68).
 
-**Status (2026-11-26):** **software-complete; physical A23 and release signing pending.** The Stage 5
+**Status (2026-11-27):** **reopened and software-complete; physical A23 and release signing pending.** The Stage 5
 overhaul rebuilt the atlas presentation and UX, fixed the settlement-layout and political-query
 defects, added real settings/onboarding and mature-world visual QA, and kept schema 4 unchanged.
 S5-A1/A2/A5 and release signing remain device/release gates. Evidence: [`STAGE_5_REPORT.md`](STAGE_5_REPORT.md).
@@ -243,7 +243,10 @@ S5-A1/A2/A5 and release signing remain device/release gates. Evidence: [`STAGE_5
 
 **Deliverables:** signed AAB + APK, green release workflow, verified budget sheet, release notes.
 
-**Dependencies:** Stage 4 feature freeze. **No new features in Stage 5** — fixes, tuning, polish only.
+**Dependencies:** Stage 4 feature freeze. The owner reopened Stage 5 for the Grand Stewardship
+Expansion (D-68): the campaign, five legacies, world-state objectives, civic charters, schema 5,
+multi-resolution atlas and the associated QA are explicitly in scope. Nothing else is; there is no
+Stage 6.
 
 **Risks**
 
@@ -268,6 +271,18 @@ matrix (v1→v5 fixtures) + APK install on a clean device.
 - `S5-A7` All stage-acceptance criteria from Stages 2–4 still green (regression).
 - `S5-A8` Every budget marked `[VERIFIED]` has an attached capture; unverified ones are listed as
   open risks in the release notes.
+
+Expansion acceptance (software unless marked):
+
+- `S5-S1` Two modes; five legacies with five sustained chapters each; completion and continued play.
+- `S5-S2` Objectives generated from real state with dedupe, expiry, failure, recovery, no softlock.
+- `S5-S3` Six charters change real utility decisions with a recorded bias; war gate untouched.
+- `S5-S4` Campaign state persists through schema 5 / checksum v7; v1–v4 load; Free Sandbox unchanged.
+- `S5-S5` 1536 px overview + regional/close chunks + smooth coast + infrastructure-driven settlement
+  footprints; quality preference; 13 stewardship captures and 2 stewardship E2E.
+- `S5-S6` Scripted 3-seed × 50-year journey: zero invariant failures, offers and chapters progress.
+- `S5-S7` A23 frame time, chunk hitch, cold start, memory and thermal run. **PENDING**.
+- `S5-S8` Signed release AAB. **PENDING**.
 
 **Exit condition:** all eight criteria + released artifacts + release notes + updated budget doc.
 

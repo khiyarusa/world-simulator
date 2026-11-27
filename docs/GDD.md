@@ -435,6 +435,13 @@ Layers are additive-capped: one base layer + one overlay at a time, to preserve 
 
 ## 16. Progression and emergent narrative
 
+**Owner amendment (2026-11-27):** the campaign adds chapters, earned Mandate Seals and charter
+slots. There is still no XP bar and no arbitrary currency; progression is measured understanding plus
+the concrete ability to steward more peoples. Free Sandbox keeps the original understanding-only
+loop. See `STEWARDSHIP_DESIGN.md`.
+
+The observation loop remains; the old sentence below describes Free Sandbox, not the campaign.
+
 There is no XP, no unlocks, no meta-currency. Progression is **understanding**: the same world gets
 more legible as the player learns its systems, and the world itself escalates from bands to states to
 empires over centuries. The chronicle is the reward.
@@ -495,3 +502,35 @@ comparable and the chronicle honest.
 See `SCOPE_AND_PRIORITIES.md` for the full matrix. Headlines: no individual-citizen agents, no
 tactical battles, no diplomacy dialogue trees, no religion system (culture absorbs it), no naval
 warfare, no technology art trees, no mod support, no cloud, no multiplayer, no map editor.
+
+
+---
+
+## 20. World Stewardship (Stage 5 reopening, D-68)
+
+The primary mode is a campaign. The player is the **World Steward**: they choose a legacy, choose a
+people, read real crises, issue strategic charters and earn sustained chapters. Civilizations remain
+autonomous; a charter changes utility, not rules.
+
+- **Modes:** Stewardship Campaign (five legacies) and Free Sandbox (the original observer loop).
+- **Legacies:** Haven (food/health/population), Concord (treaties/peace), Prosperity
+  (routes/treasury/food), Enlightenment (literacy/technology/academies), Renewal
+  (fertility/vegetation/crisis recovery). Five sustained chapters each; thresholds relative to the
+  founding baseline.
+- **Objectives:** generated from real food, diplomacy, trade, ecology, literacy and growth
+  conditions; two active/two offered; expiry, failure, cooldown and recovery are explicit; no
+  impossible or duplicate offers.
+- **Charters:** Food, Trade, Scholarship, Concord, Defence, Ecology. They offset real utility
+  scores at build/trade/research/diplomacy/ecology decision sites, with a recorded bias. One per
+  people, ten-year terms, 1–3 slots from seals. They never grant a building, army or resource and
+  never bypass the war gate.
+- **Powers:** the four existing powers remain, with cooldowns and real effects; objectives may make
+  them relevant but never require harm.
+- **Progression:** each completed objective gives one Mandate Seal; three seals unlock a charter
+  slot (max 3). Chapters/eras are the narrative progression. No XP, no shop, no power creep.
+- **Completion:** five chapters produce a legacy conclusion; the world and civilization remain
+  playable in endless stewardship.
+- **Failure:** an extinct steward people can be replaced by a successor; earned chapters/seals are
+  kept. A missed objective fails without softlocking the legacy chain.
+
+Full mechanics, thresholds, trade-offs and limits: `STEWARDSHIP_DESIGN.md`.

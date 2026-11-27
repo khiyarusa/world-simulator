@@ -336,3 +336,30 @@ New hard design rules:
 - settings text scaling never changes the canvas resolution.
 
 Device frame time, thermal, cold start and memory remain **PENDING** for the A23 pass.
+
+---
+
+## 15. Reopened Stage 5 — premium atlas and campaign
+
+Measured on the documented 2-vCPU / 2 GB Linux box; CI numbers pending the final run.
+
+| Metric | Value | Budget / note |
+|---|---|---|
+| Overview bake 1536 px | **~2.4–2.9 s** | high quality; 2048 was ~3.4 s; 1280 balanced, 1024 performance |
+| Detail chunk | 16 tiles × 48 px or 8 × 96 px | 10-texture LRU; ~90 ms stagger; overview beneath |
+| City detail | local zoom ≥ 0.62; redraw on dirty/zoom/1-tile pan | no per-frame rebuild |
+| Campaign phase | every 5 simulated days | one settlement pass + medians; not per tick |
+| 80-year campaign, worker | ~6 s Chromium; 1.9 s Node | includes objectives/charters |
+| Campaign query | board open / day change while open | no idle campaign query |
+| Bundle | 481.8 kB / 141.0 kB gzip | +12 % over the first Stage 5 build |
+
+New hard rules:
+
+- a chunk is never displayed without the overview beneath it;
+- no per-frame campaign, city or terrain work;
+- every chunk texture is explicitly destroyed on eviction;
+- quality changes the atlas only, never the simulation;
+- the campaign phase is bounded to a five-day cadence, measured by the tick benchmark.
+
+Device frame time, chunk-entry hitch, texture memory, thermal drift and cold start remain
+**PENDING** for the A23 pass; no device value is claimed here.

@@ -339,3 +339,22 @@ Stage 5 deliberately did **not** change the persisted shape:
   world checksum and schema 4.
 - The measured year-400 Medium raw save remains 1,158 KiB (1,185,792 B), under the strict
   1,200,000-byte contract.
+
+---
+
+## 11. Schema 5 — campaign state (reopened Stage 5)
+
+- **Schema 5**, checksum contract **v7**, four shards unchanged. The campaign block lives inside the
+  `meta` shard beside the society block; the v1–v4 decoders and migrations are untouched.
+- Campaign block v1: mode, legacy, era, steward civ, begun/completed days, seals, objective/charter
+  sequence, baselines (16 metrics), start population/settlements, 5 milestone rows, up to 8 objective
+  rows (id/kind/state/target/start/end/progress/goal/hold/hold-goal), up to 16 charter rows
+  (civ/kind/start/end/replaceable), per-kind resolution days, war/crisis clocks and food security.
+- Decision rows are 6 columns in schema 5 (adds the charter utility bias); the decoder accepts the
+  schema-4 5-column row and fills bias 0.
+- Migration 4→5 is a pure stamp. A v4 world decodes with an allocated **Free Sandbox** campaign; a v5
+  world missing the block is `SAVE_CORRUPT` and follows the existing previous-generation recovery.
+- `tests/persistence/stress.test.ts` still performs 50 round trips; `tests/campaign/*` proves exact
+  objective/charter/seal/milestone round trips and v4 sandbox compatibility.
+- Checksum v7 adds the campaign fields and the decision bias. The golden fixture still pins grid
+  content, not the integrity checksum (D-34).

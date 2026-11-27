@@ -446,3 +446,28 @@ changes.
 `advance` is a QA-only worker command that runs N days synchronously through the real `runDay`
 pipeline (queued behind a save). The visual suite uses it to reach a genuinely mature world; it is not
 exposed in the player UI and cannot alter rules, RNG or save shape.
+
+---
+
+## 13. Stewardship expansion architecture
+
+`sim/campaign/` is a bounded, worker-owned subsystem: `types.ts` (ids/definitions/state),
+`allocate.ts`, `measure.ts` (one settlement pass, medians and crisis clocks), `milestones.ts`
+(sustained chapters), `objectives.ts` (generation/evaluation), `charters.ts` (validation/effects),
+`codec.ts` (schema-5 meta block) and `run.ts` (begin/successor/daily cadence).
+
+`WorldState.campaign` travels in the meta shard; `worldChecksum` v7 hashes it. The worker exposes
+`campaign` queries and `campaign begin/accept/decline/charter` commands; every command is validated
+before mutation and returns a structured result. The main thread projects the campaign into a board
+sheet, a legacy strip and map marks; it never computes progress.
+
+Charters are read at five existing decision sites: `infra.ts` (per-building bias), `trade.ts` (pair
+value), `civ.ts` (research points), `diplomacy.ts` (yearly relation drift) and `ecology.ts`
+(extraction/soil recovery). `recordDecision` now stores the exact bias in the decision ring; the
+codec uses a 6-column row for schema 5 and accepts the legacy 5-column row.
+
+The atlas is a shared pixel language (`terrainPaint.ts`) used by the overview bake
+(`terrainBake.ts`) and chunk renderer (`terrainDetail.ts`). Chunks are world-space containers added
+above the overview, below settlements; detail is generated one chunk per ~90 ms and evicted by LRU.
+The mirror carries a real `infra` `Uint32Array`; `app.ts` draws local-zoom city footprints from it
+and falls back to screen-space glyphs/dots when the zoom does not justify the detail.

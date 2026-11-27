@@ -842,3 +842,76 @@ names the invariant it protects, because the next agent will be tempted to "simp
   silently relaxed. Free Sandbox remains byte-identical in rules and is still fully available.
 - **Supersedes:** the Stage 5 feature freeze in R-35 for the scope listed here only. R-35 remains
   false for any other new gameplay not named in this decision.
+
+### D-69 — Campaign state is part of the world, in schema 5
+
+- **Decision:** `WorldState.campaign` owns mode, legacy, era, steward civ, milestones, objectives,
+  charters, seals and baselines. It is encoded in the meta shard, covered by checksum v7, migrated
+  v4→v5, and never stored in `localStorage`.
+- **Why:** objectives and charters change simulation behavior; a UI-only campaign would desync on
+  reload and could be edited. The four-shard completeness rule stays intact because the campaign
+  lives inside `meta`, next to the society block.
+- **Trade-off:** schema/checksum bump and a larger meta block (bounded: 8 objectives, 16 charter
+  rows, 5 milestones). v4 worlds load as genuine Free Sandbox; a v5 world missing the block is
+  corruption, not a silent reset.
+
+### D-70 — The 896 px bake is superseded by a multi-resolution atlas
+
+- **Decision:** High quality bakes a **1536 px** overview, Balanced 1280, Performance 1024; regional
+  detail is 16-tile chunks at 48 px/tile and 8-tile close chunks at 96 px/tile, LRU-capped at 10 in
+  world space. This supersedes D-64's 896 px cap.
+- **Why:** the 896 px ceiling was a device-safety compromise, not a product law. The owner authorized
+  a larger visual/asset budget. The overview remains the fallback beneath chunks; close detail is
+  generated from the same grids so geography cannot drift.
+- **Trade-off:** ~2.4–2.9 s bake on the 2-vCPU dev box (CI below 1 s expected), ~10 chunk textures
+  (~30 MB worst case), and a generation stagger. Device memory/hitch remains a measured gate; the
+  Performance quality level exists for older GPUs.
+
+### D-71 — Charters offset utility instead of granting outcomes
+
+- **Decision:** six charters add fixed utility offsets at real decision sites (build, trade pair
+  value, research points, yearly relations, extraction/fertility recovery). One per people, 1–3
+  global slots, ten-year terms. The offset is written to the decision ring.
+- **Why:** the player needed stronger influence without turning the game into a manual builder. An
+  offset changes what the autonomous AI prefers while legality, cost, the four-condition war gate
+  and conservation remain untouched.
+- **Trade-off:** the player can see an exact bias but not a guaranteed building; the simulation's
+  needs can still override a charter. That is deliberate.
+
+### D-72 — Objectives are deterministic world-state projections
+
+- **Decision:** six condition families generate bounded offers from authoritative state; no RNG, two
+  active/two offered, one new offer per 60 days, 540-day cooldown, 180-day offer TTL, explicit
+  failure/expiry and successor recovery.
+- **Why:** scripted missions would be fake in a world that generates its own crises. A deterministic
+  projection is testable, saveable and cannot invent a cause.
+- **Trade-off:** the six families are broad, not bespoke narrative arcs; impossible when no target
+  exists, in which case the correct behavior is no offer.
+
+### D-73 — Progression is chapters and seals, not XP or currency
+
+- **Decision:** each completed objective gives one Mandate Seal; each three seals unlock one charter
+  slot (max 3). Chapters and eras carry the narrative. No shop, no XP, no purchased power.
+- **Why:** the original GDD rejected meta-currency for good reasons. A slot is a real capability with
+  a source, a use and a hard cap; it creates choices without power creep.
+- **Trade-off:** seals are not spendable in multiple ways; the reward is deliberately narrow.
+
+### D-74 — Quality is a UI preference, not a simulation setting
+
+- **Decision:** High/Balanced/Performance only change bake resolution and detail-chunk enablement;
+  campaign, simulation results and saves are identical. Stored in `ws.prefs.v1` with the other UI
+  preferences.
+- **Why:** visual degradation must never change the world (R-31). Low power and reduced motion remain
+  separate accessibility controls.
+- **Trade-off:** a high-quality world can be opened on a low-end device; the player can lower the
+  atlas without losing progress.
+
+### D-75 — Every campaign phase is bounded to a five-day cadence
+
+- **Decision:** the campaign evaluates on simulated days divisible by five, adding five days to
+  holds and food-security counters. Objectives still use real settlement, route and treaty data.
+- **Why:** a per-day sort of 200 settlements was unnecessary for the shortest 180-day condition and
+  competed with the tick budget. The cadence keeps the campaign out of the hot path without changing
+  the thresholds' meaning.
+- **Trade-off:** a crisis that starts and ends inside five days can be missed by the campaign clock;
+  the event ring still records it, and the simulation itself is unaffected.

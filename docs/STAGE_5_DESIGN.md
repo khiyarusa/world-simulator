@@ -1,4 +1,6 @@
 # STAGE 5 — LIVING ATLAS OVERHAUL: DESIGN AND VISUAL DIRECTION
+> **Reopened:** the owner authorized the Grand Stewardship Expansion (D-68). The campaign, schema 5 and multi-resolution atlas are documented in [`STEWARDSHIP_DESIGN.md`](STEWARDSHIP_DESIGN.md) and [`STAGE_5_STEWARDSHIP_REPORT.md`](STAGE_5_STEWARDSHIP_REPORT.md). This file remains the Living Atlas baseline.
+
 
 Status: software-complete, physical-device pass pending. This document is the implementation contract
 for the final stage. It describes the visual system, the UX changes, the defect ledger and the
