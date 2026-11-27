@@ -322,9 +322,9 @@ CI-class Linux runner, Chromium/SwiftShader. These are software measurements, no
 | Raw save (400 y Medium) | 1,158 KiB | < 1,200,000 B |
 | 500 y Large tick p95 | 0.052 ms | CI run 45901460203; 200 settlements, 12 civs |
 | 500 y Large save | 1.62 MB raw / 0.33 MB compressed, 81 ms | Large budget 2.0 MB compressed (SAVE_AND_DATA_MODEL §4) |
-| 500 y Large heap | 6 → 78 MB | 1.5 GB leak ceiling in `scripts/assert-stress.mjs` |
-| APK (CI, Stage 5) | 5,527,922 B (5.53 MB) | < 25 MB; run 45901460361 |
-| AAB (debug, CI) | 4,743,454 B (4.74 MB) | release-readiness artifact, not signed |
+| 500 y Large heap | 6 → 100 MB | 1.5 GB leak ceiling in `scripts/assert-stress.mjs` |
+| APK (CI, Stage 5 expansion) | 5,637,166 B (5.64 MB) | < 25 MB; run 46003826241 |
+| AAB (debug, CI) | 4,830,342 B (4.83 MB) | release-readiness artifact, not signed |
 | Bundle | index 428.7 kB / 125.3 kB gzip | + UI modules |
 
 New hard design rules:
