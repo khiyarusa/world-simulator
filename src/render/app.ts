@@ -9,12 +9,18 @@ import { Application, CanvasSource, Container, Graphics, Sprite, Texture } from 
 import type { MirrorDelta, WorldMetaMsg } from '../worker/protocol.ts';
 import { Camera, type Point } from './camera.ts';
 import { MapInput } from './input.ts';
-import { TILE_PX, markerWorldScale, selectionRadiusWorld } from './markerGeometry.ts';
+import { TILE_PX, markerWorldScale } from './markerGeometry.ts';
 import { civColor } from './palette.ts';
-import { createSettlementTextures, DOT_TEXTURE, RUINED_TEXTURE_OFFSET } from './settlementSprites.ts';
+import { createSettlementTextures, RUINED_TEXTURE_OFFSET } from './settlementSprites.ts';
 import { LayerView, type LayerViewMeta } from './layers.ts';
 import type { LayerData } from '../worker/queries.ts';
-import type { BakedTerrain } from './terrainBake.ts';
+import type { BakedTerrain, Quality } from './terrainBake.ts';
+import { TerrainDetail } from './terrainDetail.ts';
+import { drawCityDetail } from './cityDetail.ts';
+import { drawCampaignMarks } from './campaignMarks.ts';
+import { applySettlementLod, drawStateMarks } from './settlementLod.ts';
+import { drawSelection } from './selection.ts';
+import type { TerrainArrays } from '../core/gridTypes.ts';
 
 export { TILE_PX } from './markerGeometry.ts';
 
@@ -24,6 +30,12 @@ export interface ViewState {
   readonly y: number;
   readonly tilesWide: number;
   readonly tilesHigh: number;
+}
+
+export interface CampaignMarks {
+  readonly steward: { readonly x: number; readonly y: number } | null;
+  readonly objectives: readonly { readonly x: number; readonly y: number; readonly kind: number }[];
+  readonly charters: readonly { readonly x: number; readonly y: number; readonly civ: number }[];
 }
 
 export interface RendererHandlers {
@@ -41,6 +53,9 @@ export class Renderer {
   private readonly root = new Container({ isRenderGroup: true });
   private readonly settlementLayer = new Container();
   private readonly stateMarks = new Graphics();
+  private readonly cityDetail = new Graphics();
+  private readonly campaignLayer = new Graphics();
+  private campaignMarks: CampaignMarks | null = null;
   private readonly selection = new Graphics();
   readonly layers: LayerView;
   private readonly textures: Texture[];
@@ -51,11 +66,20 @@ export class Renderer {
   private readonly spriteState = new Uint8Array(200);
   private readonly capital = new Uint8Array(200);
   private readonly spritePop = new Int32Array(200);
+  private readonly spriteInfra = new Uint32Array(200);
+  private cityDirty = true;
+  private lastCityZoom = -1;
+  private lastCampaignZoom = -1;
+  private lastCityX = -1e9;
+  private lastCityY = -1e9;
   private count = 0;
   private lastLodZoom = -1;
   private destroyed = false;
   private readonly handlers: RendererHandlers;
   private terrain: Sprite | null = null;
+  private detail: TerrainDetail | null = null;
+  private grids: TerrainArrays | null = null;
+  private quality: Quality = 'high';
   private meta: WorldMetaMsg | null = null;
   private selectedId: number | null = null;
   private lowPower = false;
@@ -70,7 +94,7 @@ export class Renderer {
     this.handlers = handlers;
     this.textures = createSettlementTextures();
     this.layers = new LayerView();
-    this.root.addChild(this.layers.rasterContainer, this.settlementLayer, this.stateMarks, this.layers.vector, this.selection);
+    this.root.addChild(this.layers.rasterContainer, this.settlementLayer, this.cityDetail, this.campaignLayer, this.stateMarks, this.layers.vector, this.selection);
     this.input = new MapInput(app.canvas, this.cam, handlers);
   }
 
@@ -99,8 +123,9 @@ export class Renderer {
 
   // ---------------------------------------------------------------- world mounting
 
-  mountWorld(meta: WorldMetaMsg, baked: BakedTerrain): void {
+  mountWorld(meta: WorldMetaMsg, baked: BakedTerrain, grids?: TerrainArrays): void {
     this.meta = meta;
+    if (grids) this.grids = grids;
     const worldW = meta.width * TILE_PX;
     const worldH = meta.height * TILE_PX;
 
@@ -113,6 +138,7 @@ export class Renderer {
     this.terrain.width = worldW;
     this.terrain.height = worldH;
     this.root.addChildAt(this.terrain, 0);
+    this.rebuildDetail();
 
     this.cam.setWorld(worldW, worldH);
     this.cam.setViewport(this.app.screen.width, this.app.screen.height);
@@ -154,6 +180,7 @@ export class Renderer {
       sprite.tint = civColor(meta.settlements.civ[i] ?? 0);
       this.spriteTier[i] = meta.settlements.tier[i] ?? 0;
       this.spritePop[i] = meta.settlements.pop[i] ?? 0;
+      this.spriteInfra[i] = meta.settlements.infra[i] ?? 0;
     }
     for (let i = count; i < this.sprites.length; i++) {
       const s = this.sprites[i];
@@ -183,6 +210,8 @@ export class Renderer {
       this.spriteTier[i] = tier;
       this.spriteState[i] = state;
       this.spritePop[i] = delta.pop[i] ?? 0;
+      this.spriteInfra[i] = delta.infra[i] ?? 0;
+      this.cityDirty = true;
     }
     for (let i = count; i < this.sprites.length; i++) {
       const s = this.sprites[i];
@@ -193,67 +222,55 @@ export class Renderer {
     this.drawSelection();
   }
 
-  /** Small state dots: occupied, starving, prosperous. Shape+colour, never colour alone. */
-  private drawStateMarks(): void {
-    const g = this.stateMarks;
-    g.clear();
-    const s = 1 / Math.max(0.03, this.cam.zoom);
-    for (let i = 0; i < this.sprites.length; i++) {
-      const sprite = this.sprites[i];
-      if (!sprite || !sprite.visible) continue;
-      const state = this.spriteState[i] ?? 0;
-      if (state === 0 && this.capital[i] === 0) continue;
-      const x = sprite.x;
-      const y = sprite.y;
-      if (this.capital[i] !== 0) {
-        g.circle(x, y, 9 * s).stroke({ width: 1.1 * s, color: 0xd8c07a, alpha: 0.95 });
-        g.poly([x - 3 * s, y - 12 * s, x, y - 17 * s, x + 3 * s, y - 12 * s]).fill({ color: 0xd8c07a, alpha: 0.98 });
-      }
-      if ((state & 16) !== 0) {
-        g.poly([x - 3 * s, y - 8 * s, x + 3 * s, y - 8 * s, x, y - 3 * s]).fill({ color: 0xb8503c, alpha: 0.98 });
-      }
-      if ((state & 2) !== 0) {
-        g.circle(x + 4 * s, y - 3 * s, 1.9 * s).fill({ color: 0xc08a3e, alpha: 0.98 });
-      } else if ((state & 32) !== 0) {
-        g.circle(x + 4 * s, y - 3 * s, 1.6 * s).fill({ color: 0xd8c07a, alpha: 0.98 });
-      }
-      if ((state & 8) !== 0) {
-        g.circle(x - 4 * s, y - 3 * s, 1.9 * s).stroke({ width: 1 * s, color: 0x9a5a3a, alpha: 0.98 });
-      }
-    }
+
+  setCampaignMarks(marks: CampaignMarks | null): void {
+    this.campaignMarks = marks;
+    this.lastCampaignZoom = this.cam.zoom;
+    this.drawCampaignMarks();
   }
 
-  /** Screen-space level of detail: dots at the world overview, full glyphs when close. */
+  private drawCampaignMarks(): void {
+    drawCampaignMarks(this.campaignLayer, this.campaignMarks, this.cam.zoom);
+  }
+
+  private drawCityDetail(): void {
+    if (!this.meta) return;
+    drawCityDetail(this.cityDetail, {
+      cam: this.cam,
+      meta: this.meta,
+      count: this.count,
+      tier: this.spriteTier,
+      state: this.spriteState,
+      infra: this.spriteInfra,
+      pop: this.spritePop,
+      capital: this.capital,
+    });
+  }
+
+  /** Small state dots: occupied, starving, prosperous. Shape+colour, never colour alone. */
+  private drawStateMarks(): void {
+    drawStateMarks({
+      g: this.stateMarks,
+      sprites: this.sprites,
+      count: this.count,
+      state: this.spriteState,
+      capital: this.capital,
+      zoom: this.cam.zoom,
+      meta: this.meta,
+    });
+  }
+
   private applyLod(): void {
-    const zoom = this.cam.zoom;
-    const overview = zoom < 0.105;
-    const regional = zoom < 0.28;
-    const s = 1 / Math.max(0.03, zoom);
-    for (let i = 0; i < this.count; i++) {
-      const sprite = this.sprites[i];
-      if (!sprite) continue;
-      const tier = this.spriteTier[i] ?? 0;
-      const capital = this.capital[i] !== 0;
-      let visible = true;
-      if (overview) {
-        sprite.texture = this.textures[DOT_TEXTURE]!;
-        const dotPx = 3.2 + tier * 1.05 + (capital ? 2.4 : 0);
-        sprite.scale.set(dotPx * s / 64);
-      } else if (regional) {
-        visible = capital || tier >= 2;
-        sprite.texture = this.textures[tier + ((this.spriteState[i] ?? 0) & 1 ? RUINED_TEXTURE_OFFSET : 0)]!;
-        sprite.scale.set(markerWorldScale(tier, zoom) * (capital ? 1.08 : 1));
-      } else {
-        sprite.texture = this.textures[tier + ((this.spriteState[i] ?? 0) & 1 ? RUINED_TEXTURE_OFFSET : 0)]!;
-        sprite.scale.set(markerWorldScale(tier, zoom) * (capital ? 1.08 : 1));
-      }
-      sprite.visible = visible;
-    }
-    for (let i = this.count; i < this.sprites.length; i++) {
-      const sprite = this.sprites[i];
-      if (sprite) sprite.visible = false;
-    }
-    this.lastLodZoom = zoom;
+    this.cityDetail.visible = applySettlementLod({
+      sprites: this.sprites,
+      textures: this.textures,
+      count: this.count,
+      tier: this.spriteTier,
+      state: this.spriteState,
+      capital: this.capital,
+      zoom: this.cam.zoom,
+    });
+    this.lastLodZoom = this.cam.zoom;
   }
 
   setLowPower(on: boolean): void {
@@ -316,28 +333,9 @@ export class Renderer {
   }
 
   private drawSelection(): void {
-    this.selection.clear();
     this.lastSelectionZoom = this.cam.zoom;
     this.selectionDirty = false;
-    if (this.selectedId === null) return;
-    const sprite = this.sprites[this.selectedId];
-    if (!sprite || !sprite.visible) return;
-    const r = selectionRadiusWorld(this.spriteTier[this.selectedId] ?? 0, this.cam.zoom);
-    const w = 1.8 / Math.max(0.15, this.cam.zoom);
-    this.selection
-      .circle(sprite.x, sprite.y, r)
-      .stroke({ width: w, color: 0xece5d8, alpha: 0.98 });
-    this.selection
-      .circle(sprite.x, sprite.y, r + 4 / Math.max(0.15, this.cam.zoom))
-      .stroke({ width: w * 0.45, color: 0xc8a05a, alpha: 0.7 });
-    // four small ticks make the selection legible without depending on colour alone
-    const tick = (r + 7 / Math.max(0.15, this.cam.zoom));
-    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
-      this.selection
-        .moveTo(sprite.x + dx * tick, sprite.y + dy * tick)
-        .lineTo(sprite.x + dx * (tick + 4 / Math.max(0.15, this.cam.zoom)), sprite.y + dy * (tick + 4 / Math.max(0.15, this.cam.zoom)))
-        .stroke({ width: w * 0.8, color: 0xece5d8, alpha: 0.9 });
-    }
+    drawSelection(this.selection, this.sprites, this.selectedId, this.spriteTier, this.cam.zoom);
   }
 
   /**
@@ -400,6 +398,7 @@ export class Renderer {
     this.input.applyInertia(dt);
     this.cam.update(dt);
     this.applyTransform();
+    this.detail?.update(this.cam);
     if (Math.abs(this.cam.zoom - this.lastLodZoom) > this.lastLodZoom * 0.01 || this.lastLodZoom < 0) this.applyLod();
     if (this.selectedId !== null) {
       if (this.reducedMotion || this.lowPower) this.selection.alpha = 1;
@@ -434,6 +433,47 @@ export class Renderer {
       this.drawSelection();
       this.drawStateMarks();
     }
+    if (this.campaignMarks && Math.abs(this.cam.zoom - this.lastCampaignZoom) > this.lastCampaignZoom * 0.01) {
+      this.drawCampaignMarks();
+      this.lastCampaignZoom = this.cam.zoom;
+    }
+    const cityMoved = Math.abs(this.cam.x - this.lastCityX) > TILE_PX || Math.abs(this.cam.y - this.lastCityY) > TILE_PX;
+    if (this.cam.zoom >= 0.62 && (this.cityDirty || cityMoved || Math.abs(this.cam.zoom - this.lastCityZoom) > this.lastCityZoom * 0.02)) {
+      this.drawCityDetail();
+      this.lastCityZoom = this.cam.zoom;
+      this.lastCityX = this.cam.x;
+      this.lastCityY = this.cam.y;
+      this.cityDirty = false;
+    }
+  }
+
+  private rebuildDetail(): void {
+    this.detail?.destroy();
+    this.detail = null;
+    if (!this.grids || !this.meta) return;
+    this.detail = new TerrainDetail(this.grids, this.meta.width, this.meta.height, this.meta.seaLevel, this.quality);
+    this.root.addChildAt(this.detail.container, 1);
+  }
+
+  setCamera(tileX: number, tileY: number, zoom: number): void {
+    this.cam.centerOn((tileX + 0.5) * TILE_PX, (tileY + 0.5) * TILE_PX, zoom);
+    this.cam.snap();
+    this.applyTransform();
+  }
+
+  detailStats(): { entries: number; visible: number; zoom: number } {
+    const stats = this.detail?.stats() ?? { entries: 0, visible: 0, zoom: 0 };
+    return { ...stats, zoom: this.cam.zoom };
+  }
+
+  detailImage(): string {
+    return this.detail?.image() ?? '';
+  }
+
+  setQuality(quality: Quality): void {
+    if (this.quality === quality) return;
+    this.quality = quality;
+    this.rebuildDetail();
   }
 
   private emitView(): void {
@@ -451,6 +491,8 @@ export class Renderer {
     if (this.destroyed) return;
     this.destroyed = true;
     this.input.destroy();
+    this.detail?.destroy();
+    this.detail = null;
     this.app.destroy({ removeView: true, releaseGlobalResources: true }, { children: true });
   }
 }
