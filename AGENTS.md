@@ -27,10 +27,11 @@ The product test for every decision: *does this make the world more causally rea
 | 2.1 — Reliability and correctness hardening | **complete** — 13 verified defects fixed, all with regression tests (`docs/STAGE_2_1_HARDENING.md`) |
 | 3 — Living world & civilization systems | **implementation and all eight software gates evidenced; physical Galaxy A23 capture pending** (`docs/STAGE_3_REPORT.md`) |
 | 4 — Player experience & content | **software-complete; physical Galaxy A23 capture pending** (`docs/STAGE_4_REPORT.md`) |
-| 5 — Living atlas overhaul, optimisation, QA, release | **software-complete; physical Galaxy A23 validation and release signing pending** (`docs/STAGE_5_REPORT.md`) |
+| 5 — Grand Stewardship Expansion: campaign, player agency and premium atlas | **reopened by the owner; implementation in progress** (`docs/STAGE_5_REPORT.md`) |
 
-There are exactly five stages. **There is no Stage 6.** Unfinished work is cut or explicitly reported,
-never deferred to an imaginary future stage.
+There are exactly five stages. **There is no Stage 6.** The owner reopened Stage 5 for the Grand
+Stewardship Expansion (D-68): campaign, charters, premium atlas and the associated persistence. The
+previous Stage 5 Living Atlas work is the foundation, not a substitute.
 
 Do not start a stage (or any implementation) unless the task prompt explicitly says to.
 

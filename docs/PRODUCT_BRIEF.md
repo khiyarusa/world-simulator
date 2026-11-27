@@ -1,4 +1,9 @@
-# PRODUCT BRIEF — World Simulator
+# PRODUCT BRIEF
+
+> **Owner amendment (2026-11-27):** the player is now the **World Steward**. The autonomous world
+> remains the foundation, but the primary experience is a campaign of long-term stewardship: choose a
+> legacy, read real crises, issue strategic charters and leave a legacy. Free Sandbox preserves the
+> original observer experience (D-68). — World Simulator
 
 Working title: **World Simulator** (configurable; no commercial title yet).
 Document status: **Stage 1 baseline v1.0** — binding for Stages 2–5 until explicitly revised.

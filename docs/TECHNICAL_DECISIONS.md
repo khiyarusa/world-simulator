@@ -825,3 +825,20 @@ names the invariant it protects, because the next agent will be tempted to "simp
 - **Trade-off:** a page that is actually being torn down loses its in-memory state, which is correct;
   the world is already in IndexedDB. Backgrounding never fires this path without `persisted` in a
   Chromium WebView, so resume is unaffected.
+
+### D-68 — The owner reopens Stage 5 for the Grand Stewardship Expansion
+
+- **Decision:** Stage 5 is formally reopened. The delivered Living Atlas remains the foundation; the
+  stage adds (a) a Stewardship Campaign with five legacy paths, eras and sustained milestones,
+  (b) dynamic objectives generated from authoritative world state, (c) civic charters that change
+  real utility scores inside the worker, (d) campaign persistence in schema 5 with checksum v7, and
+  (e) a multi-resolution premium atlas with infrastructure-driven settlement art. There is still no
+  Stage 6.
+- **Why:** the owner judged the observer-only loop and the 896 px visual ceiling insufficient for
+  release. The prior no-new-features rule was an owner constraint, and the owner has explicitly
+  replaced it for this work.
+- **Trade-offs:** save schema and checksum move, so migrations, fixtures and golden checks must be
+  updated in the same change. Asset size and GPU memory grow; budgets are re-measured rather than
+  silently relaxed. Free Sandbox remains byte-identical in rules and is still fully available.
+- **Supersedes:** the Stage 5 feature freeze in R-35 for the scope listed here only. R-35 remains
+  false for any other new gameplay not named in this decision.

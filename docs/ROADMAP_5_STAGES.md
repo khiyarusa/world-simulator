@@ -216,9 +216,14 @@ manifest/asset licence check; Lighthouse-ish first-paint check (informational).
 
 ---
 
-## Stage 5 — Living atlas overhaul, optimization, QA and release
+## Stage 5 — Grand Stewardship Expansion: campaign, player agency and premium atlas
 
-**Objective:** ship it, or ship a smaller thing that works.
+**Objective:** ship a world worth playing, not only a world worth watching.
+
+**Owner amendment (2026-11-27):** Stage 5 is reopened. The delivered Living Atlas is retained; the
+stage now adds the Stewardship Campaign, five legacy paths, dynamic world-state objectives, civic
+charters that alter real utility decisions, campaign persistence (schema 5), a multi-resolution
+premium atlas, richer settlements and a matching QA suite. Exactly five stages still exist (D-68).
 
 **Status (2026-11-26):** **software-complete; physical A23 and release signing pending.** The Stage 5
 overhaul rebuilt the atlas presentation and UX, fixed the settlement-layout and political-query

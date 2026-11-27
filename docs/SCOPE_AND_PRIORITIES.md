@@ -151,6 +151,19 @@ not planned · **CUT** decided against, with reason.
 | i18n framework | P2 | — | English-only at release; strings are already in one file |
 | Mod support | CUT | — | |
 
+### 1.11 Owner-authorized Stage 5 expansion (2026-11-27)
+
+| Feature | Pri | Stage | Note |
+|---|---|---|---|
+| Stewardship Campaign + five legacy paths | P0 | 5 | primary mode; Free Sandbox remains |
+| Dynamic objectives from real world state | P0 | 5 | no scripted mission text |
+| Civic charters affecting utility decisions | P0 | 5 | worker-authoritative, bounded capacity |
+| Campaign persistence (schema 5) | P0 | 5 | migration from v1–v4, checksum v7 |
+| Multi-resolution premium atlas | P0 | 5 | overview + regional detail chunks |
+| Infrastructure-driven settlement art | P0 | 5 | real infra bits, no invented buildings |
+| Campaign/legacy UI + conclusion | P0 | 5 | sheet, not a seventh layer |
+| Larger asset/APK budget | P0 | 5 | quality over the old 5.5 MB artefact |
+
 ## 2. Explicit postponements and cuts (single list)
 
 **CUT (never planned):** individual citizen agents · tactical battles · religion system · cloud saves
