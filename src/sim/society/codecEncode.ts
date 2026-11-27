@@ -43,6 +43,7 @@ export function encodeSociety(world: WorldState): SocietyDoc {
       s.decisionActor[i] ?? 0,
       s.decisionChosen[i] ?? 0,
       s.decisionScore[i] ?? 0,
+      s.decisionBias[i] ?? 0,
     );
   }
 
@@ -152,7 +153,7 @@ export function encodeSociety(world: WorldState): SocietyDoc {
   }
 
   return {
-    v: 4,
+    v: 5,
     cohorts: arr(s.cohorts, sc * COHORT_COUNT),
     occShare: arr(s.occShare, sc * 5),
     stock: arr(s.stock, sc * RES_COUNT),

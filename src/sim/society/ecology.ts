@@ -22,6 +22,7 @@ import { FLAG_DROUGHT, isAlive, removePeople } from './common.ts';
 import { withStream } from './streams.ts';
 import { retainEvent } from './vital.ts';
 import { damageInfrastructure } from './infra.ts';
+import { charterEcologyCaretaking } from '../campaign/charters.ts';
 import { runInterventionEffects } from './interventions.ts';
 
 /** Most a tile can recover to, given its moisture (vegetation is a 0..255 index). */
@@ -58,7 +59,8 @@ export function runEcology(world: WorldState, day: number): void {
     // --- harvest pressure: extractors cut real vegetation, and a timber-rich tile feels it more
     const extractors = cohortOf(soc, i, COHORT.EXTRACTORS);
     const mask = grids.resource[tile] ?? 0;
-    const pressure = Math.floor(extractors / ((mask & 4) !== 0 ? 12 : 3));
+    const caretaking = charterEcologyCaretaking(world, i);
+    const pressure = Math.floor((extractors / ((mask & 4) !== 0 ? 12 : 3)) * (caretaking ? 75 : 100) / 100);
     vegetation = Math.max(0, vegetation - pressure);
 
     // --- recovery: vegetation regrows toward the moisture-limited climax, slowly
@@ -70,7 +72,7 @@ export function runEcology(world: WorldState, day: number): void {
     if (vegetation < 50) {
       fertility = Math.max(5, fertility - 1);
     } else if (vegetation >= target - 10 && fertility < fertTarget) {
-      fertility = Math.min(fertTarget, fertility + 1);
+      fertility = Math.min(fertTarget, fertility + (caretaking ? 2 : 1));
     }
     grids.fertility[tile] = fertility;
 

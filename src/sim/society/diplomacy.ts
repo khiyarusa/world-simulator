@@ -19,6 +19,7 @@ import {
   recordDecision,
 } from './state.ts';
 import { atWar, civPopulation, civSettlementCount, isAlive, relationOf, setRelation } from './common.ts';
+import { charterConcordDelta } from '../campaign/charters.ts';
 
 const ROOT_CAUSE = -1;
 
@@ -124,6 +125,7 @@ export function updateRelations(world: WorldState): void {
       if (treatyBetween(soc, a, b, TREATY.ALLIANCE)) delta += 3;
       else if (treatyBetween(soc, a, b, TREATY.TRADE)) delta += 2;
       else if (treatyBetween(soc, a, b, TREATY.NON_AGGRESSION)) delta += 1;
+      delta += charterConcordDelta(world, a, b);
       adjustRelation(soc, a, b, delta);
 
       // grievance: friction accumulates it, quiet neighbours and treaties erode it

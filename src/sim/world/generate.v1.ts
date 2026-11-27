@@ -20,6 +20,7 @@ import { recipeHashOf } from './recipeHash.ts';
 import { validateGenerated } from './validate.ts';
 import { tierOf } from '../state/worldState.ts';
 import { allocateSociety } from '../society/allocate.ts';
+import { allocateCampaign } from '../campaign/allocate.ts';
 import { initialiseSociety } from '../society/init.ts';
 import type { CivStore, GenerationReport, SettlementStore, WorldRecipe, WorldState } from '../state/worldState.ts';
 import { allocateCivs, allocateGrids, allocateSettlements } from '../state/worldState.ts';
@@ -37,7 +38,6 @@ const STAGE_WEIGHTS: ReadonlyArray<readonly [string, number]> = [
   ['spawn', 8],
   ['report', 6],
 ];
-
 class Progress {
   private done = 0;
   private readonly fn: ProgressFn | undefined;
@@ -53,7 +53,6 @@ class Progress {
     this.fn?.(name, Math.min(99, this.done));
   }
 }
-
 /** 3×3 box blur; one pass removes single-cell pits that would otherwise all become lakes. */
 function smoothField(src: Float32Array, width: number, height: number): Float32Array {
   const out = new Float32Array(src.length);
@@ -452,6 +451,7 @@ function attempt(recipe: WorldRecipe, progress: Progress): AttemptResult {
     rngStates,
     report,
     society: allocateSociety(),
+    campaign: allocateCampaign(),
   };
   initialiseSociety(state, state.society);
 

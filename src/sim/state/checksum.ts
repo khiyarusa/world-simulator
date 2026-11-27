@@ -11,7 +11,7 @@ import type { WorldState } from './worldState.ts';
  * in `water` or in where their random streams stand are *not* the same world, and a checksum that
  * cannot see that difference cannot detect the corruption it exists to detect.
  *
- * Version 5 covers the complete persisted society: every stock, capacity, carry, occupation share,
+ * Version 7 adds the campaign block. Version 5 covers the complete persisted society: every stock, capacity, carry, occupation share,
  * price, culture axis, technology flag and research progress, relation and grievance, climate cell,
  * trade route, treaty, war (including the four gate values), event, decision and chronicle row.
  * Hashing only a head entry would let a save lose history and still "verify".
@@ -19,9 +19,9 @@ import type { WorldState } from './worldState.ts';
  * Field order is frozen. Everything hashed here is deterministic persisted state; nothing here is
  * transient (no render, camera, UI, timing or report data).
  */
-export const CHECKSUM_CONTRACT_VERSION = 6;
+export const CHECKSUM_CONTRACT_VERSION = 7;
 
-const CHECKSUM_DOMAIN = 0x43534d36; // "CSM6"
+const CHECKSUM_DOMAIN = 0x43534d37; // "CSM7"
 
 function bytesOf(view: Int16Array | Int8Array | Uint8Array | Uint16Array): Uint8Array {
   return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
@@ -239,6 +239,7 @@ export function worldChecksum(state: WorldState): number {
     crc = crc32OfU32(crc, soc.decisionActor[i] ?? 0);
     crc = crc32OfU32(crc, soc.decisionChosen[i] ?? 0);
     crc = crc32OfU32(crc, soc.decisionScore[i] ?? 0);
+    crc = crc32OfU32(crc, u8(soc.decisionBias[i] ?? 0));
   }
 
   crc = crc32OfU32(crc, soc.chronicleCount);
@@ -289,6 +290,58 @@ export function worldChecksum(state: WorldState): number {
     crc = crc32OfU32(crc, soc.statsFertility[i] ?? 0);
     crc = crc32OfU32(crc, soc.statsDrought[i] ?? 0);
   }
+
+
+  // --- Stage 5 campaign block (checksum v7). Field order is frozen with the schema.
+  const cp = state.campaign;
+  crc = crc32OfU32(crc, cp.version);
+  crc = crc32OfU32(crc, cp.mode);
+  crc = crc32OfU32(crc, cp.legacy);
+  crc = crc32OfU32(crc, cp.era);
+  crc = crc32OfU32(crc, cp.targetCiv);
+  crc = crc32OfU32(crc, cp.begunDay);
+  crc = crc32OfU32(crc, cp.completed ? 1 : 0);
+  crc = crc32OfU32(crc, cp.completedDay);
+  crc = crc32OfU32(crc, cp.seals);
+  crc = crc32OfU32(crc, cp.objectiveSeq);
+  crc = crc32OfU32(crc, cp.charterSeq);
+  crc = crc32OfU32(crc, cp.lastObjectiveDay);
+  crc = crc32OfU32(crc, cp.lastEvalDay);
+  for (let i = 0; i < 16; i++) crc = crc32OfU32(crc, cp.baseline[i] ?? 0);
+  crc = crc32OfU32(crc, cp.startPopulation);
+  crc = crc32OfU32(crc, cp.startSettlements);
+  for (let i = 0; i < 5; i++) {
+    crc = crc32OfU32(crc, cp.milestoneDone[i] ?? 0);
+    crc = crc32OfU32(crc, cp.milestoneHold[i] ?? 0);
+    crc = crc32OfU32(crc, cp.milestoneProgress[i] ?? 0);
+    crc = crc32OfU32(crc, cp.milestoneProgress2[i] ?? 0);
+  }
+  crc = crc32OfU32(crc, cp.objectiveCount);
+  for (let i = 0; i < cp.objectiveCount; i++) {
+    crc = crc32OfU32(crc, cp.objId[i] ?? 0);
+    crc = crc32OfU32(crc, cp.objKind[i] ?? 0);
+    crc = crc32OfU32(crc, cp.objState[i] ?? 0);
+    crc = crc32OfU32(crc, cp.objTarget[i] ?? 0);
+    crc = crc32OfU32(crc, cp.objTargetB[i] ?? 0);
+    crc = crc32OfU32(crc, cp.objStart[i] ?? 0);
+    crc = crc32OfU32(crc, cp.objEnd[i] ?? 0);
+    crc = crc32OfU32(crc, cp.objProgress[i] ?? 0);
+    crc = crc32OfU32(crc, cp.objGoal[i] ?? 0);
+    crc = crc32OfU32(crc, cp.objHold[i] ?? 0);
+    crc = crc32OfU32(crc, cp.objHoldGoal[i] ?? 0);
+  }
+  crc = crc32OfU32(crc, cp.charterCount);
+  for (let i = 0; i < cp.charterCount; i++) {
+    crc = crc32OfU32(crc, cp.chCiv[i] ?? 0);
+    crc = crc32OfU32(crc, cp.chKind[i] ?? 0);
+    crc = crc32OfU32(crc, cp.chStart[i] ?? 0);
+    crc = crc32OfU32(crc, cp.chEnd[i] ?? 0);
+    crc = crc32OfU32(crc, cp.chReplaceableDay[i] ?? 0);
+  }
+  for (let i = 0; i < 16; i++) crc = crc32OfU32(crc, cp.lastResolved[i] ?? 0);
+  crc = crc32OfU32(crc, cp.lastWarDay);
+  crc = crc32OfU32(crc, cp.lastCrisisDay);
+  crc = crc32OfU32(crc, cp.foodSecurityDays);
 
   const c = state.civs;
   crc = crc32OfU32(crc, c.count);

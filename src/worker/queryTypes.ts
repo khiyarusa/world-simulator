@@ -266,6 +266,8 @@ export interface DecisionView {
   readonly actorName: string;
   readonly chosen: number;
   readonly score: number;
+  /** Utility offset contributed by an active stewardship charter (schema 5). */
+  readonly bias: number;
 }
 
 export interface InterventionInfo {

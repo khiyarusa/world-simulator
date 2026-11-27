@@ -25,6 +25,8 @@ export interface MirrorDelta {
   tier: Uint8Array;
   /** Stage 4 visual state bits: 1 ruined, 2 starving, 4 drought, 8 blight, 16 occupied, 32 prosperous, 64 declining */
   state: Uint8Array;
+  /** Real infrastructure bitfield (schema 5 detail layers); never invented by the renderer. */
+  infra: Uint32Array;
 }
 
 export interface SettlementLayout {
@@ -34,6 +36,7 @@ export interface SettlementLayout {
   readonly civ: Uint8Array;
   readonly tier: Uint8Array;
   readonly pop: Int32Array;
+  readonly infra: Uint32Array;
 }
 
 export interface CivLayout {
@@ -51,6 +54,17 @@ export interface WorldMetaMsg {
   readonly day: number;
   readonly settlements: SettlementLayout;
   readonly civs: CivLayout;
+  /** Stage 5: enough for the shell to show the legacy strip and the setup step without a query. */
+  readonly campaign?: CampaignSummary | undefined;
+}
+
+export interface CampaignSummary {
+  readonly mode: number;
+  readonly legacy: number;
+  readonly era: number;
+  readonly targetCiv: number;
+  readonly completed: boolean;
+  readonly milestones: number;
 }
 
 export interface SettlementMetaMsg {
@@ -99,10 +113,17 @@ export type QueryWhat =
   | { readonly kind: 'decisions'; readonly limit?: number | undefined }
   | { readonly kind: 'layer'; readonly layer: LayerKind; readonly filter?: HistoryFilter | undefined; readonly metric?: EcologyMetric | undefined }
   | { readonly kind: 'interventions' }
+  | { readonly kind: 'campaign' }
   | { readonly kind: 'debug' };
 
 /** Structured query failure. The client rejects instead of handing `null` to a panel. */
 export type QueryResponse = { readonly ok: true; readonly data: unknown } | { readonly ok: false; readonly code: string; readonly message: string };
+
+export type CampaignCommand =
+  | { readonly op: 'begin'; readonly civ: number }
+  | { readonly op: 'accept'; readonly id: number }
+  | { readonly op: 'decline'; readonly id: number }
+  | { readonly op: 'charter'; readonly civ: number; readonly kind: number; readonly replace: boolean };
 
 export type PlayerCommand =
   | { readonly op: 'bless'; readonly settlement: number; readonly resource: number; readonly amount: number }
@@ -188,6 +209,8 @@ export type Cmd =
   | {
       readonly t: 'create';
       readonly recipe: WorldRecipe;
+      /** Stage 5: create a stewardship campaign world; absent means Free Sandbox. */
+      readonly campaign?: { readonly legacy: number } | undefined;
     }
   | { readonly t: 'load'; readonly shards: readonly SaveShard[] }
   | { readonly t: 'speed'; readonly speed: Speed }
@@ -195,6 +218,7 @@ export type Cmd =
   | { readonly t: 'select'; readonly id: number | null }
   | { readonly t: 'query'; readonly qid: number; readonly what: QueryWhat }
   | { readonly t: 'player'; readonly token: number; readonly command: PlayerCommand }
+  | { readonly t: 'campaign'; readonly token: number; readonly command: CampaignCommand }
   | { readonly t: 'save'; readonly sid: number }
   | { readonly t: 'preview'; readonly token: number; readonly recipe: WorldRecipe }
   /** QA / harness only: run N days synchronously through the real pipeline. */
@@ -246,7 +270,7 @@ export type WorkerMsg =
 export function transferListOf(msg: WorkerMsg): Transferable[] | undefined {
   if (msg.t === 'delta') {
     const d = msg.delta;
-    return [d.id.buffer, d.pop.buffer, d.civ.buffer, d.tier.buffer, d.state.buffer];
+    return [d.id.buffer, d.pop.buffer, d.civ.buffer, d.tier.buffer, d.state.buffer, d.infra.buffer];
   }
   return undefined;
 }

@@ -6,6 +6,7 @@
  */
 import { asErrorMessage, SimError } from '../core/errors.ts';
 import { generateV1 } from '../sim/world/generate.v1.ts';
+import { startCampaign } from '../sim/campaign/run.ts';
 import { runDay } from '../sim/systems/pipeline.ts';
 import { populationOf } from '../sim/society/state.ts';
 import { CAPACITY, type WorldRecipe, type WorldState } from '../sim/state/worldState.ts';
@@ -13,8 +14,9 @@ import { deserializeWorld, encodeSnapshot, SAVE_SCHEMA_VERSION } from './seriali
 import { captureWorld } from './snapshot.ts';
 import { Scheduler } from './scheduler.ts';
 import { MirrorPool } from './mirrorPool.ts';
-import { MAX_DELTA_HZ, type Cmd, type MirrorDelta,  type SaveShard, type SettlementMetaMsg, type Speed, type WorldMetaMsg, type WorkerMsg } from './protocol.ts';
-import { runQuery, runPlayer } from './queryHandler.ts';
+import { MAX_DELTA_HZ, type Cmd, type MirrorDelta, type SaveShard, type Speed, type WorkerMsg } from './protocol.ts';
+import { buildSettlementMeta, buildWorldMeta } from './metaViews.ts';
+import { runQuery, runPlayer, runCampaignCommand } from './queryHandler.ts';
 
 interface WorkerScope {
   postMessage(message: WorkerMsg, transfer?: Transferable[]): void;
@@ -139,6 +141,7 @@ function buildDelta(): MirrorDelta | null {
       if (last < first) visual |= 64;
     }
     buffers.state[i] = visual;
+    buffers.infra[i] = soc.infra[i] ?? 0;
   }
   seq++;
   return {
@@ -150,24 +153,7 @@ function buildDelta(): MirrorDelta | null {
     civ: buffers.civ,
     tier: buffers.tier,
     state: buffers.state,
-  };
-}
-
-function settlementMeta(): SettlementMetaMsg | null {
-  if (!state) return null;
-  const s = state.settlements;
-  const c = state.civs;
-  return {
-    day: state.day,
-    settlements: {
-      x: s.x.slice(0, s.count),
-      y: s.y.slice(0, s.count),
-      nameIdx: s.nameIdx.slice(0, s.count),
-      civ: s.civ.slice(0, s.count),
-      tier: s.tier.slice(0, s.count),
-      pop: s.pop.slice(0, s.count),
-    },
-    civs: { nameIdx: c.nameIdx.slice(0, c.count), colorIdx: c.colorIdx.slice(0, c.count), capital: c.capital.slice(0, c.count) },
+    infra: buffers.infra,
   };
 }
 
@@ -176,7 +162,7 @@ function emitSettlementMetaIfNeeded(): void {
   if (state.settlements.count === lastSettlementCount && state.civs.count === lastCivCount) return;
   lastSettlementCount = state.settlements.count;
   lastCivCount = state.civs.count;
-  const meta = settlementMeta();
+  const meta = buildSettlementMeta(state);
   if (meta) post({ t: 'settlementMeta', meta });
 }
 
@@ -194,41 +180,22 @@ function maybeEmitDelta(force = false): void {
   }
   pendingDelta = false;
   lastEmitAt = t;
-  post({ t: 'delta', delta }, [delta.id.buffer, delta.pop.buffer, delta.civ.buffer, delta.tier.buffer, delta.state.buffer]);
+  post({ t: 'delta', delta }, [delta.id.buffer, delta.pop.buffer, delta.civ.buffer, delta.tier.buffer, delta.state.buffer, delta.infra.buffer]);
 }
 
-function worldMeta(): WorldMetaMsg | null {
-  if (!state) return null;
-  const s = state.settlements;
-  const c = state.civs;
-  return {
-    width: state.width,
-    height: state.height,
-    seaLevel: state.seaLevel,
-    recipe: state.recipe,
-    report: state.report,
-    day: state.day,
-    settlements: {
-      x: s.x.slice(0, s.count),
-      y: s.y.slice(0, s.count),
-      nameIdx: s.nameIdx.slice(0, s.count),
-      civ: s.civ.slice(0, s.count),
-      tier: s.tier.slice(0, s.count),
-      pop: s.pop.slice(0, s.count),
-    },
-    civs: { nameIdx: c.nameIdx.slice(0, c.count), colorIdx: c.colorIdx.slice(0, c.count), capital: c.capital.slice(0, c.count) },
-  };
-}
-
-async function create(recipe: WorldRecipe): Promise<void> {
+async function create(recipe: WorldRecipe, campaign?: { legacy: number }): Promise<void> {
   clearSchedule();
   speed = 0;
   scheduler = new Scheduler();
   post({ t: 'progress', stage: 'start', pct: 0 });
   const generated = generateV1(recipe, (stage, pct) => post({ t: 'progress', stage, pct }), now);
   state = generated;
-  const meta = worldMeta();
-  if (!meta) throw new SimError('INVARIANT', 'world meta unavailable after generation');
+  if (campaign) {
+    if (!startCampaign(state, campaign.legacy)) throw new SimError('GEN_INVALID', 'unknown legacy path');
+    speed = 0;
+    scheduler.setSpeed(0);
+  }
+  const meta = buildWorldMeta(state);
   lastSettlementCount = -1;
   lastCivCount = -1;
   post({ t: 'worldMeta', meta });
@@ -245,8 +212,7 @@ async function load(shards: readonly SaveShard[]): Promise<void> {
     throw new SimError('SAVE_SCHEMA_NEWER', `save schema ${loaded.schemaVersion}`);
   }
   state = loaded.state;
-  const meta = worldMeta();
-  if (!meta) throw new SimError('INVARIANT', 'world meta unavailable after load');
+  const meta = buildWorldMeta(loaded.state);
   lastSettlementCount = -1;
   lastCivCount = -1;
   post({ t: 'worldMeta', meta });
@@ -342,7 +308,7 @@ function handle(cmd: Cmd): void {
         reportFailure(e);
         break;
       }
-      void create(cmd.recipe).catch(reportFailure);
+      void create(cmd.recipe, cmd.campaign).catch(reportFailure);
       break;
     case 'load':
       if (saving) {
@@ -445,6 +411,25 @@ function handle(cmd: Cmd): void {
       });
       // a command changes what the map and panels must show; push the new mirror immediately
       if (result.ok) maybeEmitDelta(true);
+      break;
+    }
+    case 'campaign': {
+      const result = runCampaignCommand(state, cmd.command);
+      post({
+        t: 'commandResult',
+        token: cmd.token,
+        ok: result.ok,
+        code: result.code,
+        message: result.message,
+        eventId: result.eventId,
+        effects: [],
+        cooldownDays: 0,
+      });
+      if (result.ok) {
+        // Stewardship starts paused: the player reads the board and presses play when ready.
+        maybeEmitDelta(true);
+        maybeEmitStats();
+      }
       break;
     }
     case 'dispose':

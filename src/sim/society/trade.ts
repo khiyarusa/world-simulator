@@ -22,6 +22,7 @@ import {
   INFRA,
 } from './state.ts';
 import { distanceSq, isAlive, relationOf } from './common.ts';
+import { charterTradePct } from '../campaign/charters.ts';
 import { RESERVE_DAYS, recomputePrices, runTreasury } from './economy.ts';
 
 /** Units a settlement is willing to sell, above its own working reserve. */
@@ -68,7 +69,8 @@ function pairValue(world: WorldState, a: number, b: number): number {
       if (qty > 0) best = Math.max(best, Math.floor((qty * (pa - pb)) / 1000));
     }
   }
-  return best;
+  const pct = charterTradePct(world, a, b);
+  return Math.floor((best * pct) / 100);
 }
 
 function openRoute(world: WorldState, a: number, b: number, day: number, score: number): boolean {

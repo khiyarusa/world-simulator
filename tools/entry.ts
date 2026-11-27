@@ -18,6 +18,13 @@ import { runDay } from '../src/sim/systems/pipeline.ts';
 import { gridsChecksum, worldChecksum } from '../src/sim/state/checksum.ts';
 import { auditHydrology } from '../src/sim/world/hydrologyCheck.ts';
 import { runBalance } from './balance.ts';
+import { validateWorld } from '../src/sim/state/checksum.ts';
+import { validateSociety } from '../src/sim/society/validate.ts';
+import { startCampaign, beginStewardship } from '../src/sim/campaign/run.ts';
+import { issueCharter } from '../src/sim/campaign/charters.ts';
+import { acceptObjective } from '../src/sim/campaign/objectives.ts';
+import { applyIntervention, blessMaxAmount } from '../src/sim/society/interventions.ts';
+import { OBJECTIVE_STATE, activeCharterCount, charterSlots, LEGACY } from '../src/sim/campaign/types.ts';
 import { seedOf } from '../src/core/seed.ts';
 import type { Preset, WorldRecipe } from '../src/sim/state/worldState.ts';
 
@@ -171,6 +178,124 @@ async function balance(): Promise<void> {
   console.log(`wars sampled ${wars}, all gates pass: ${report.seedsDetail.every((s) => s.warSamples.every((w) => w.gatePass))}`);
 }
 
+/** A scripted steward journey: the campaign must offer, accept and act, not just exist. */
+async function campaign(): Promise<void> {
+  const seeds = Number(arg('seeds', '3'));
+  const years = Number(arg('years', '50'));
+  const preset = arg('preset', 'medium') as Preset;
+  const out = arg('out', '');
+  const rows = [];
+  const started = performance.now();
+  const charterOrder = [1, 2, 6, 3, 4, 5];
+  let charterIndex = 0;
+  for (let s = 0; s < seeds; s++) {
+    const seed = s * 2654435761 + 90210;
+    const world = generateV1(recipeFor(seed, preset));
+    const failures: string[] = [];
+    if (!startCampaign(world, LEGACY.HAVEN)) failures.push('campaign did not start');
+    if (!beginStewardship(world, 0).ok) failures.push('steward did not begin');
+    let offered = 0;
+    let completed = 0;
+    let failed = 0;
+    let accepted = 0;
+    for (let d = 0; d < years * 360; d++) {
+      runDay(world);
+      if (world.day % 30 === 0) {
+        let active = 0;
+        for (let i = 0; i < world.campaign.objectiveCount; i++) {
+          if ((world.campaign.objState[i] ?? 0) === OBJECTIVE_STATE.ACTIVE) active++;
+        }
+        if (active < 2) {
+          for (let i = 0; i < world.campaign.objectiveCount; i++) {
+            if ((world.campaign.objState[i] ?? 0) !== OBJECTIVE_STATE.OFFERED) continue;
+            const kind = world.campaign.objKind[i] ?? 0;
+            const target = world.campaign.objTarget[i] ?? 0;
+            const result = acceptObjective(world, world.day, world.campaign.objId[i] ?? 0);
+            if (!result.ok) continue;
+            accepted++;
+            // A scripted steward uses the real powers it has: food for hunger, care for the soil.
+            if (kind === 1) {
+              const max = blessMaxAmount(world, target, 0);
+              if (max > 0) applyIntervention(world, { op: 'bless', settlement: target, resource: 0, amount: Math.min(max, 8) });
+            } else if (kind === 4) {
+              applyIntervention(world, { op: 'fertilize', settlement: target, intensity: 2 });
+            }
+            break;
+          }
+        }
+      }
+      if (world.day % (5 * 360) === 0) {
+        const active = activeCharterCount(world.campaign, world.day);
+        if (active < charterSlots(world.campaign)) {
+          for (let civ = 0; civ < world.civs.count; civ++) {
+            const has = world.campaign.charterCount;
+            let occupied = false;
+            for (let c = 0; c < has; c++) {
+              if ((world.campaign.chCiv[c] ?? 255) === civ && (world.campaign.chEnd[c] ?? 0) > world.day) occupied = true;
+            }
+            if (occupied) continue;
+            const kind = charterOrder[charterIndex++ % charterOrder.length] ?? 1;
+            issueCharter(world, world.day, civ, kind, false);
+            break;
+          }
+        }
+      }
+    }
+    for (let i = 0; i < world.campaign.objectiveCount; i++) {
+      const st = world.campaign.objState[i] ?? 0;
+      if (st !== OBJECTIVE_STATE.FREE) offered++;
+      if (st === OBJECTIVE_STATE.COMPLETE) completed++;
+      if (st === OBJECTIVE_STATE.FAILED) failed++;
+    }
+    try {
+      validateSociety(world, world.society);
+      failures.push(...validateWorld(world));
+    } catch (e) {
+      failures.push(e instanceof Error ? e.message : String(e));
+    }
+    const milestones = world.campaign.milestoneDone.reduce((n, v) => n + (v !== 0 ? 1 : 0), 0);
+    const holds = world.campaign.milestoneHold.reduce((n, v) => n + (v !== 0 ? 1 : 0), 0);
+    rows.push({
+      seed,
+      years,
+      preset,
+      population: world.settlements.pop.reduce((n, v, i) => n + (i < world.settlements.count ? v : 0), 0),
+      settlements: world.settlements.count,
+      civs: world.civs.count,
+      legacy: world.campaign.legacy,
+      era: world.campaign.era,
+      milestones,
+      holds,
+      seals: world.campaign.seals,
+      objectivesOffered: offered,
+      objectivesAccepted: accepted,
+      objectivesCompleted: completed,
+      objectivesFailed: failed,
+      chartersIssued: world.campaign.charterCount,
+      activeCharters: activeCharterCount(world.campaign, world.day),
+      completedCampaign: world.campaign.completed,
+      invariantFailures: failures,
+    });
+  }
+  const report = {
+    seeds,
+    years,
+    preset,
+    elapsedMs: Math.round(performance.now() - started),
+    failures: rows.reduce((n, r) => n + r.invariantFailures.length, 0),
+    rows,
+  };
+  const json = JSON.stringify(report, null, 2);
+  if (out) writeFileSync(out, `${json}\n`, 'utf8');
+  console.log(json);
+  console.log(
+    `campaign: ${seeds} seeds x ${years}y | offers ${rows.reduce((n, r) => n + r.objectivesOffered, 0)} | ` +
+      `accepted ${rows.reduce((n, r) => n + r.objectivesAccepted, 0)} | ` +
+      `completed ${rows.reduce((n, r) => n + r.objectivesCompleted, 0)} | ` +
+      `milestones ${rows.reduce((n, r) => n + r.milestones, 0)} | failures ${report.failures}`,
+  );
+}
+
 function round(v: number): number {
   return Math.round(v * 1000) / 1000;
 }
@@ -181,7 +306,8 @@ else if (mode === 'determinism') determinism();
 else if (mode === 'bench') bench();
 else if (mode === 'hydro') hydro();
 else if (mode === 'balance') await balance();
+else if (mode === 'campaign') await campaign();
 else {
-  console.log('usage: tools.js <golden|determinism|bench|hydro|balance> [--seeds=20] [--years=400] [--preset=medium] [--out=file]');
+  console.log('usage: tools.js <golden|determinism|bench|hydro|balance|campaign> [--seeds=20] [--years=400] [--preset=medium] [--out=file]');
   if (!existsSync(GOLDEN_PATH)) console.log(`golden fixture missing at ${GOLDEN_PATH}`);
 }

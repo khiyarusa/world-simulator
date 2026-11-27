@@ -4,7 +4,7 @@
  * Owns nothing about the world; it forwards commands and hands events to the session. Buffer
  * recycling is explicit (`release`) so the worker never allocates a delta per emission.
  */
-import type { CommandEffect, PlayerCommand, QueryWhat, SaveShard, Speed, WorkerMsg } from './protocol.ts';
+import type { CampaignCommand, CommandEffect, PlayerCommand, QueryWhat, SaveShard, Speed, WorkerMsg } from './protocol.ts';
 import type { WorldMetaMsg, MirrorDelta, SettlementMetaMsg } from './protocol.ts';
 import type { TerrainArrays } from '../core/gridTypes.ts';
 import type { WorldRecipe } from '../sim/state/worldState.ts';
@@ -80,8 +80,8 @@ export class WorkerClient {
     this.worker.postMessage({ t: 'init', maxSettlements: 200 });
   }
 
-  create(recipe: WorldRecipe): void {
-    this.worker.postMessage({ t: 'create', recipe });
+  create(recipe: WorldRecipe, campaign?: { legacy: number }): void {
+    this.worker.postMessage({ t: 'create', recipe, campaign });
   }
 
   load(shards: readonly SaveShard[]): void {
@@ -131,6 +131,15 @@ export class WorkerClient {
     });
   }
 
+  /** Send a campaign command. Resolution always comes from the worker's validation. */
+  campaign(command: CampaignCommand): Promise<CommandResult> {
+    const token = this.nextToken++;
+    return new Promise<CommandResult>((resolve) => {
+      this.pendingCommands.set(token, resolve);
+      this.worker.postMessage({ t: 'campaign', token, command });
+    });
+  }
+
   save(): Promise<SaveResult> {
     if (this.saveWaiter) return Promise.reject(new Error('a save is already in flight'));
     this.saveBuffer = [];
@@ -177,6 +186,7 @@ export class WorkerClient {
             msg.delta.civ.buffer,
             msg.delta.tier.buffer,
             msg.delta.state.buffer,
+            msg.delta.infra.buffer,
           ],
         });
         break;

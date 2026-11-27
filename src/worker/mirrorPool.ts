@@ -7,6 +7,7 @@ interface MirrorSet {
   civ: Uint8Array;
   tier: Uint8Array;
   state: Uint8Array;
+  infra: Uint32Array;
 }
 
 export class MirrorPool {
@@ -28,13 +29,14 @@ export class MirrorPool {
       civ: new Uint8Array(this.cap),
       tier: new Uint8Array(this.cap),
       state: new Uint8Array(this.cap),
+      infra: new Uint32Array(this.cap),
     };
   }
 
   release(buffers: readonly ArrayBuffer[]): void {
-    if (buffers.length !== 5) return;
-    const [idBuf, popBuf, civBuf, tierBuf, stateBuf] = buffers;
-    if (!idBuf || !popBuf || !civBuf || !tierBuf || !stateBuf) return;
+    if (buffers.length !== 6) return;
+    const [idBuf, popBuf, civBuf, tierBuf, stateBuf, infraBuf] = buffers;
+    if (!idBuf || !popBuf || !civBuf || !tierBuf || !stateBuf || !infraBuf) return;
     this.inFlight = Math.max(0, this.inFlight - 1);
     this.free.push({
       id: new Uint16Array(idBuf),
@@ -42,6 +44,7 @@ export class MirrorPool {
       civ: new Uint8Array(civBuf),
       tier: new Uint8Array(tierBuf),
       state: new Uint8Array(stateBuf),
+      infra: new Uint32Array(infraBuf),
     });
   }
 }

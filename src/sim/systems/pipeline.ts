@@ -26,6 +26,7 @@ import { runMilitary, runWar } from '../society/war.ts';
 import { runDiplomacyYearly } from '../society/diplomacy.ts';
 import { runCivYearly, runResearch, runTechSpread } from '../society/civ.ts';
 import { runYearlyStats } from '../society/stats.ts';
+import { runCampaign } from '../campaign/run.ts';
 
 export interface TickContext {
   state: WorldState;
@@ -58,6 +59,7 @@ export const DAILY_STAGES: ReadonlyArray<readonly [string, Stage]> = [
   ['war', (c) => runWar(c.state, c.day)],
   ['settlement-growth', (c) => runGrowth(c.state, c.day)],
   ['civilization', (c) => { runResearch(c.state, c.day); runTechSpread(c.state, c.day); runCivYearly(c.state, c.day); }],
+  ['stewardship', (c) => runCampaign(c.state, c.day)],
   ['chronicle', (c) => runChronicle(c.state, c.day)],
 ];
 

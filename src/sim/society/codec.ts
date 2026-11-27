@@ -115,11 +115,12 @@ function optionalRows(value: unknown, label: string, stride: number, cap: number
 export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   if (!doc || typeof doc !== 'object') throw new SimError('SAVE_CORRUPT', 'society block missing');
   const d = doc as SocietyDoc;
-  if (d.v !== 2 && d.v !== 3 && d.v !== 4) {
+  if (d.v !== 2 && d.v !== 3 && d.v !== 4 && d.v !== 5) {
     throw new SimError('UNSUPPORTED_VERSION', `society block version ${String(d.v)}`);
   }
   const legacy = d.v === 2;
-  const stage4 = d.v === 4;
+  const stage4 = d.v === 4 || d.v === 5;
+  const stage5 = d.v === 5;
 
   const sc = world.settlements.count;
   const cc = world.civs.count;
@@ -179,16 +180,20 @@ export function decodeSociety(world: WorldState, doc: unknown): SocietyState {
   }
   s.eventHead = s.eventCount % EVENT_CAPACITY;
 
-  const decisions = expectRows(d.decisions?.rows, 'decisions.rows', 5, DECISION_CAPACITY);
+  const decisionStride = stage5 ? 6 : 5;
+  const decisions = expectRows(d.decisions?.rows, 'decisions.rows', decisionStride, DECISION_CAPACITY);
   s.decisionCount = Math.min(DECISION_CAPACITY, d.decisions?.count ?? 0);
-  if (decisions.length < s.decisionCount * 5) throw new SimError('SAVE_CORRUPT', 'society.decisions rows shorter than count');
+  if (decisions.length < s.decisionCount * decisionStride) {
+    throw new SimError('SAVE_CORRUPT', 'society.decisions rows shorter than count');
+  }
   for (let k = 0; k < s.decisionCount; k++) {
-    const o = k * 5;
+    const o = k * decisionStride;
     s.decisionDay[k] = decisions[o] ?? 0;
     s.decisionKind[k] = decisions[o + 1] ?? 0;
     s.decisionActor[k] = decisions[o + 2] ?? 0;
     s.decisionChosen[k] = decisions[o + 3] ?? 0;
     s.decisionScore[k] = decisions[o + 4] ?? 0;
+    s.decisionBias[k] = stage5 ? (decisions[o + 5] ?? 0) : 0;
   }
   s.decisionHead = s.decisionCount % DECISION_CAPACITY;
 

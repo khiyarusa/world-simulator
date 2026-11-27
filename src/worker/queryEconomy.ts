@@ -183,6 +183,7 @@ export function queryDecisions(world: WorldState, limitIn: number | undefined): 
       actorName: actor < world.civs.count ? civNameOf(world, actor) : settlementNameOf(world, actor),
       chosen: soc.decisionChosen[i] ?? 0,
       score: soc.decisionScore[i] ?? 0,
+      bias: soc.decisionBias[i] ?? 0,
     });
   }
   return out;

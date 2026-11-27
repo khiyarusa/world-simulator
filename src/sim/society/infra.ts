@@ -22,6 +22,7 @@ import {
 } from './state.ts';
 import { isAlive } from './common.ts';
 import { recalcCaps } from './economy.ts';
+import { charterInfraBias } from '../campaign/charters.ts';
 
 interface Cost {
   readonly wood: number;
@@ -128,7 +129,7 @@ function affinity(soc: WorldState['society'], civ: number, bit: number): number 
 }
 
 /** Score every unbuilt, legal, affordable building and return the best bit and score. */
-function chooseBuilding(world: WorldState, settlement: number): { bit: number; score: number } {
+function chooseBuilding(world: WorldState, settlement: number): { bit: number; score: number; bias: number } {
   const soc = world.society;
   const s = world.settlements;
   const civ = s.civ[settlement] ?? 0;
@@ -144,6 +145,7 @@ function chooseBuilding(world: WorldState, settlement: number): { bit: number; s
 
   let bestBit = -1;
   let bestScore = 0;
+  let bestBias = 0;
   for (let bit = 0; bit < INFRA_COUNT; bit++) {
     if (infraHas(soc, settlement, bit)) continue;
     const cost = INFRA_COST[bit];
@@ -194,13 +196,15 @@ function chooseBuilding(world: WorldState, settlement: number): { bit: number; s
     }
     if (need <= 0) continue;
     const costPenalty = Math.floor((cost.coin + cost.wood + cost.stone + cost.metal + cost.goods) / 20);
-    const score = need + affinity(soc, civ, bit) - costPenalty;
+    const bias = charterInfraBias(world, civ, bit);
+    const score = need + affinity(soc, civ, bit) + bias - costPenalty;
     if (score > bestScore) {
       bestScore = score;
       bestBit = bit;
+      bestBias = bias;
     }
   }
-  return { bit: bestBit, score: bestScore > 0 ? (bestScore > 1000 ? 1000 : bestScore) : 0 };
+  return { bit: bestBit, score: bestScore > 0 ? (bestScore > 1000 ? 1000 : bestScore) : 0, bias: bestBias };
 }
 
 /** Highest grievance or active war involving this civilization, 0..100. */
@@ -228,7 +232,7 @@ export function runConstruction(world: WorldState, day: number): void {
   let built = 0;
   for (let i = 0; i < s.count && built < 4; i++) {
     if (!isAlive(world, i)) continue;
-    const { bit, score } = chooseBuilding(world, i);
+    const { bit, score, bias } = chooseBuilding(world, i);
     if (bit < 0 || score < 55) continue;
     const cost = INFRA_COST[bit];
     if (!cost || !canPay(world, i, cost)) continue;
@@ -236,7 +240,7 @@ export function runConstruction(world: WorldState, day: number): void {
     soc.infra[i] = (soc.infra[i] ?? 0) | (1 << bit);
     world.counters.infraBuilt += 1;
     appendEvent(soc, day, EVENT_TYPE.INFRA_BUILT, SEVERITY.NOTABLE, i, s.civ[i] ?? 0, 0, bit, 0);
-    recordDecision(soc, day, DECISION.BUILD, i, bit, score);
+    recordDecision(soc, day, DECISION.BUILD, i, bit, score, bias);
     recalcCaps(world);
     built++;
   }

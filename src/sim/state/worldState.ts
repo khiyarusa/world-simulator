@@ -3,6 +3,7 @@ import type { RngState } from '../../core/rng.ts';
 import { TERRAIN_KEYS } from '../../core/gridTypes.ts';
 import type { TerrainArrays, TerrainKey } from '../../core/gridTypes.ts';
 import type { SocietyState } from '../society/state.ts';
+import type { CampaignState } from '../campaign/types.ts';
 
 export type Preset = 'small' | 'medium' | 'large';
 
@@ -125,6 +126,8 @@ export interface WorldState {
   report: GenerationReport;
   /** Stage 3 population, economy, society, ecology and history. */
   society: SocietyState;
+  /** Stage 5: stewardship campaign, objectives and charters (schema 5). */
+  campaign: CampaignState;
 }
 
 export const TIER = {

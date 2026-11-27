@@ -11,6 +11,7 @@ import { SAVE_SCHEMA_VERSION } from '../core/saveSchema.ts';
 import { seedToText } from '../core/seed.ts';
 import { worldChecksum } from '../sim/state/checksum.ts';
 import { encodeSociety } from '../sim/society/codec.ts';
+import { encodeCampaign } from '../sim/campaign/codec.ts';
 import { GRID_KEYS } from '../sim/state/worldState.ts';
 import type { WorldState } from '../sim/state/worldState.ts';
 import {
@@ -82,6 +83,7 @@ export function captureWorld(state: WorldState, schemaVersion = SAVE_SCHEMA_VERS
     rng: state.rngStates.map((s) => ({ s0: s.s0, s1: s.s1, s2: s.s2, s3: s.s3 })),
     report: state.report,
     society: encodeSociety(state),
+    campaign: encodeCampaign(state.campaign),
   };
 
   const terrainHeader = new Uint8Array(TERRAIN_HEADER_BYTES);

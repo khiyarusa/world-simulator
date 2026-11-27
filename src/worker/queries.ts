@@ -20,6 +20,7 @@ export type * from './queryTypes.ts';
 export { eventCategory, queryHistory, queryEvent, queryChronicle, querySeries } from './queryEvents.ts';
 export { queryEconomy, queryEcology, settlementEcology, queryInterventions, queryDecisions } from './queryEconomy.ts';
 export { queryLayer } from './queryLayers.ts';
+export { queryCampaign } from './queryCampaign.ts';
 export { biomeNameOf } from './queryNames.ts';
 
 // ------------------------------------------------------------------ world / settlement / civ

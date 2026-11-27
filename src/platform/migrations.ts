@@ -30,6 +30,11 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * rings — the honest state of a world that never saw a player action.
    */
   3: (doc) => ({ ...doc, schemaVersion: 4 }),
+  /**
+   * 4 -> 5: the campaign block (mode, legacy, milestones, objectives, charters) is added to the meta
+   * payload. A schema-4 world predates stewardship and decodes as Free Sandbox with empty history.
+   */
+  4: (doc) => ({ ...doc, schemaVersion: 5 }),
 };
 
 export function migrateDoc(doc: WorldDoc): WorldDoc {

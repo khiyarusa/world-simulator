@@ -28,12 +28,12 @@ function alive(w: WorldState): number {
   return 0;
 }
 
-describe('schema 4 (player interventions and yearly history)', () => {
+describe('schema 5 (campaign) on the route from 3 (interventions/history)', () => {
   it('migrates a schema-3 document and keeps the four-shard contract', () => {
     const doc = { ...newWorldDoc('w-old', 'Old world', 'AAAA0000-00000001', 'small'), schemaVersion: 3 };
     const migrated = migrateDoc(doc);
-    expect(migrated.schemaVersion).toBe(4);
-    expect(SAVE_SCHEMA_VERSION).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
+    expect(SAVE_SCHEMA_VERSION).toBe(5);
   });
 
   it('decodes a genuine schema-3 society block with empty intervention and series rings', () => {
@@ -68,7 +68,7 @@ describe('schema 4 (player interventions and yearly history)', () => {
 
     const checksum = worldChecksum(w);
     const restored = await deserializeWorld(await serializeWorld(w));
-    expect(restored.schemaVersion).toBe(4);
+    expect(restored.schemaVersion).toBe(5);
     expect(worldChecksum(restored.state)).toBe(checksum);
     expect(restored.state.society.interventionCount).toBe(2);
     expect(restored.state.society.interventionLastDay[0]).toBe(w.society.interventionLastDay[0]);

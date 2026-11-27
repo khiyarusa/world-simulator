@@ -25,7 +25,7 @@ describe('save/load stress (Stage 5 S5-A4)', () => {
     for (let cycle = 0; cycle < 50; cycle++) {
       const restored = await deserializeWorld(await serializeWorld(state));
       expect(worldChecksum(restored.state)).toBe(expected);
-      expect(restored.schemaVersion).toBe(4);
+      expect(restored.schemaVersion).toBe(5);
       state = restored.state;
     }
   });

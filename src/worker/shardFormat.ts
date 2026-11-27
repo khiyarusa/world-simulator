@@ -74,6 +74,8 @@ export interface MetaDoc {
   report: GenerationReport;
   /** Stage 3 society block (schema v2). Absent in v1 saves, which are migrated on load. */
   society?: unknown;
+  /** Stage 5 campaign block (schema v5). Absent before v5, which decodes as Free Sandbox. */
+  campaign?: unknown;
 }
 
 export type { WorldRecipe };

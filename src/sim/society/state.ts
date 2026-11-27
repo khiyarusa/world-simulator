@@ -143,6 +143,15 @@ export const EVENT_TYPE = {
   PLAYER_BLESS: 25,
   PLAYER_FERTILIZE: 26,
   PLAYER_INCITE: 27,
+  /** Stage 5 campaign. Append-only: these numbers are persisted. */
+  CAMPAIGN_BEGUN: 28,
+  CHARTER_ISSUED: 29,
+  CHARTER_ENDED: 30,
+  OBJECTIVE_ACCEPTED: 31,
+  OBJECTIVE_COMPLETE: 32,
+  OBJECTIVE_FAILED: 33,
+  MILESTONE_REACHED: 34,
+  LEGACY_COMPLETE: 35,
 } as const;
 export const EVENT_TYPE_NAMES = [
   'settlement_founded',
@@ -173,6 +182,14 @@ export const EVENT_TYPE_NAMES = [
   'player_bless',
   'player_fertilize',
   'player_incite',
+  'campaign_begun',
+  'charter_issued',
+  'charter_ended',
+  'objective_accepted',
+  'objective_complete',
+  'objective_failed',
+  'milestone_reached',
+  'legacy_complete',
 ] as const;
 
 export const SEVERITY = { TRACE: 1, LOCAL: 2, NOTABLE: 3, MAJOR: 4, HISTORIC: 5 } as const;
@@ -258,6 +275,8 @@ export interface SocietyState {
   decisionActor: Uint8Array;
   decisionChosen: Uint8Array;
   decisionScore: Uint16Array;
+  /** Schema 5: the utility offset a stewardship charter contributed to this decision, 0 if none. */
+  decisionBias: Int16Array;
 
   /** yearly chronicle ring: year, civ, population, settlements, notable events */
   chronicleCount: number;
@@ -435,6 +454,7 @@ export function recordDecision(
   actor: number,
   chosen: number,
   score: number,
+  bias = 0,
 ): void {
   const index = soc.decisionHead;
   soc.decisionDay[index] = day;
@@ -442,6 +462,7 @@ export function recordDecision(
   soc.decisionActor[index] = actor;
   soc.decisionChosen[index] = chosen;
   soc.decisionScore[index] = score > 1000 ? 1000 : score;
+  soc.decisionBias[index] = bias;
   soc.decisionHead = (index + 1) % DECISION_CAPACITY;
   if (soc.decisionCount < DECISION_CAPACITY) soc.decisionCount++;
 }

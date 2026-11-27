@@ -2,7 +2,7 @@
 export type Numbers = number[];
 
 export interface SocietyDoc {
-  v: 2 | 3 | 4;
+  v: 2 | 3 | 4 | 5;
   cohorts: Numbers;
   occShare: Numbers;
   stock: Numbers;

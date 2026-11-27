@@ -23,6 +23,7 @@ import {
 } from './state.ts';
 import { civSettlementCount, isAlive } from './common.ts';
 import { hasForeignContact } from './trade.ts';
+import { charterResearchPct } from '../campaign/charters.ts';
 import { infraHas, INFRA } from './state.ts';
 
 const RESEARCH_COST = [3_000, 6_000, 12_000] as const;
@@ -126,7 +127,8 @@ export function runResearch(world: WorldState, day: number): void {
     const { points } = researchPoints(world, civ);
     if (points <= 0) continue;
     const at = civ * 12 + node;
-    const progress = Math.min(1000, (soc.techProgress[at] ?? 0) + Math.floor((points * 1000) / (RESEARCH_COST[tierOfTech(node)] ?? 3000)));
+    const pct = charterResearchPct(world, civ);
+    const progress = Math.min(1000, (soc.techProgress[at] ?? 0) + Math.floor((points * 1000 * pct) / (100 * (RESEARCH_COST[tierOfTech(node)] ?? 3000))));
     soc.techProgress[at] = progress;
     if (progress >= 1000) {
       soc.tech[civ * 12 + node] = 1;

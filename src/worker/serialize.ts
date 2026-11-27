@@ -16,6 +16,8 @@ import type { SaveShard } from './protocol.ts';
 import { captureWorld } from './snapshot.ts';
 import { decodeSociety } from '../sim/society/codec.ts';
 import { allocateSociety } from '../sim/society/allocate.ts';
+import { allocateCampaign } from '../sim/campaign/allocate.ts';
+import { decodeCampaign } from '../sim/campaign/codec.ts';
 import { initialiseSociety } from '../sim/society/init.ts';
 import type { WorldSnapshot } from './snapshot.ts';
 import {
@@ -272,6 +274,7 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
     rngStates,
     report: meta.report,
     society: allocateSociety(),
+    campaign: allocateCampaign(),
   };
 
   // Migration 1 → 2: a v1 save has no society block. It is initialised deterministically from the
@@ -284,6 +287,13 @@ async function deserializeInner(shards: readonly SaveShard[]): Promise<Deseriali
   } else {
     // genuine v1: migrate deterministically from the legacy population
     initialiseSociety(state, state.society);
+  }
+
+  // Schema 5 adds the campaign block. A v4 world is genuinely a Free Sandbox world, not a corrupt
+  // file; a v5 world missing its block is corrupt (silently resetting a campaign would be worse).
+  if (meta.schemaVersion >= 5) {
+    if (meta.campaign === undefined) throw new SimError('SAVE_CORRUPT', 'v5 save is missing its campaign block');
+    state.campaign = decodeCampaign(meta.campaign);
   }
 
   return { state, schemaVersion: meta.schemaVersion };

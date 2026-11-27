@@ -76,6 +76,7 @@ export function allocateSociety(): SocietyState {
     decisionActor: new Uint8Array(DECISION_CAPACITY),
     decisionChosen: new Uint8Array(DECISION_CAPACITY),
     decisionScore: new Uint16Array(DECISION_CAPACITY),
+    decisionBias: new Int16Array(DECISION_CAPACITY),
 
     chronicleCount: 0,
     chronicleHead: 0,
