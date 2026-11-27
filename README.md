@@ -6,13 +6,16 @@ and a history is written that you can read and trace back to its causes.
 
 The world does not need you. That is the point.
 
-> **Status: Stage 5 of 5 — software-complete; physical Galaxy A23 and release signing pending.**
-> The final overhaul adds a rebuilt terrain/atlas presentation, settlement LOD and state marks,
-> six materially deeper layers and panels, cross-system navigation, real settings and onboarding,
-> Persian RTL/English large-text layout, mature-world visual QA, and measured query/render
-> optimizations. Simulation determinism and schema-4 saves are unchanged.
-> See [`docs/STAGE_5_REPORT.md`](docs/STAGE_5_REPORT.md) and
-> [`docs/STAGE_5_DESIGN.md`](docs/STAGE_5_DESIGN.md).
+> **Status: Stage 5 reopened — Grand Stewardship Expansion, software-complete; physical Galaxy A23
+> validation and release signing pending.**
+> The game now has two real modes: a **Stewardship Campaign** with five legacy paths, sustained
+> chapters, dynamic objectives, civic charters that change actual AI decisions, seals and a legacy
+> conclusion; and the original **Free Sandbox**. The map is a 1536 px living survey atlas with
+> regional detail chunks, smooth coasts and infrastructure-driven city footprints. Saves are
+> schema 5 / checksum v7; Free Sandbox remains unchanged in rules.
+> See [`docs/STAGE_5_STEWARDSHIP_REPORT.md`](docs/STAGE_5_STEWARDSHIP_REPORT.md),
+> [`docs/STEWARDSHIP_DESIGN.md`](docs/STEWARDSHIP_DESIGN.md) and
+> [`docs/ART_BIBLE.md`](docs/ART_BIBLE.md).
 
 ---
 

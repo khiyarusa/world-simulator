@@ -27,7 +27,7 @@ The product test for every decision: *does this make the world more causally rea
 | 2.1 — Reliability and correctness hardening | **complete** — 13 verified defects fixed, all with regression tests (`docs/STAGE_2_1_HARDENING.md`) |
 | 3 — Living world & civilization systems | **implementation and all eight software gates evidenced; physical Galaxy A23 capture pending** (`docs/STAGE_3_REPORT.md`) |
 | 4 — Player experience & content | **software-complete; physical Galaxy A23 capture pending** (`docs/STAGE_4_REPORT.md`) |
-| 5 — Grand Stewardship Expansion: campaign, player agency and premium atlas | **reopened by the owner; implementation in progress** (`docs/STAGE_5_REPORT.md`) |
+| 5 — Grand Stewardship Expansion: campaign, player agency and premium atlas | **software-complete; physical Galaxy A23 and release signing pending** (`docs/STAGE_5_STEWARDSHIP_REPORT.md`) |
 
 There are exactly five stages. **There is no Stage 6.** The owner reopened Stage 5 for the Grand
 Stewardship Expansion (D-68): campaign, charters, premium atlas and the associated persistence. The
@@ -213,42 +213,45 @@ Do not start a stage (or any implementation) unless the task prompt explicitly s
 
 ## 10. Current next action
 
-Stage 5 is implemented and its software gates are evidenced in `docs/STAGE_5_REPORT.md`. The final
-stage remains **device-pending and release-pending**:
+Stage 5 (reopened) is implemented and its software gates are evidenced in
+`docs/STAGE_5_STEWARDSHIP_REPORT.md`. The remaining work is **device and release**, not a sixth
+stage:
 
-1. Install the CI APK/AAB on a Galaxy A23 and run the device protocol in
-   `docs/PERFORMANCE_BUDGET.md` §11: startup, 50-year 8× run, year-200 save/load, every layer/panel by
-   touch, Persian/English, 200 % text, landscape, background/resume, 15-minute thermal run.
-2. Record the real captures and timings in the Stage 5 report §9. Do not mark S5-A1/A2/A5 or release
-   signing as passed before that.
-3. Sign and package the release AAB; no cloud accounts or telemetry.
+1. Install the CI APK/AAB on a Galaxy A23 and run the protocol in `docs/PERFORMANCE_BUDGET.md` §11:
+   cold start, the 2048/1536 bake, regional chunk entry, 50-year 8×, year-200 save/load, all six
+   layers, campaign setup/board/charter/objective by touch, Persian/English, 200 % text, landscape,
+   background/resume and a 15-minute thermal run.
+2. Record actual frame time, chunk hitch, memory and thermal measurements in the expansion report.
+   Do not mark S5-A1/A2/A5 or release signing green before that.
+3. Sign the release AAB; no cloud accounts or telemetry.
 
 The Stage 5 contract that a future change must not silently break:
 
-- **settlements founded after load reach the renderer.** `settlementMeta` carries live layout, civs
-  and capitals; the HUD/map/labels update without re-baking terrain (D-60).
-- **the political query is exact and bounded.** 18-tile nearest-settlement projection with a
-  deterministic bucket grid; `tests/worker/layers.test.ts` compares it byte-for-byte with the
-  reference (D-61).
-- **selection is not a per-frame Graphics rebuild.** Redraw only on selection/zoom change; pulse is
-  alpha-only and disabled by reduced motion/low power (D-62).
-- **schema 4 and the four shards are unchanged.** Stage 5 UI preferences and onboarding live in
-  `localStorage`; no world field was added (D-63).
-- **terrain is one deterministic 896 px bake** from the real grids; no per-tick/per-frame terrain
-  work (D-64).
-- **Persian RTL is the default interface**, English is complete, and text scaling uses
-  `--text-scale`; settings are real, not a translation-only switch (D-55/D-65).
+- **Free Sandbox has no campaign state.** `campaign.mode = 0`, no objectives, no charters, no
+  strip; the original observer loop and all six layers still work (D-69).
+- **Campaign state is worker state, schema 5.** It lives in the meta shard, is checksummed (v7),
+  migrated from v1–v4 and never stored in UI preferences. A v4 world decodes as a genuine sandbox.
+- **Objectives are generated from real conditions.** No RNG, no impossible target, two active/two
+  offered, dedupe + cooldown, explicit expiry/failure/recovery, no softlock of the legacy chain.
+- **Charters offset utility, they do not grant outcomes.** One per people, 1–3 slots, ten-year terms;
+  the exact bias is recorded with the decision; the four-condition war gate is untouched.
+- **Legacy thresholds are relative to the founding baseline.** Five chapters, five eras; completion
+  is earned by sustained real results; the world remains playable afterwards.
+- **The atlas is multi-resolution.** 1536/1280/1024 overview by quality plus 48/96 px-per-tile
+  chunks; the 896 px cap is superseded (D-70). The overview must always remain beneath a chunk.
+- **Settlements render only real infrastructure.** The mirror carries `infra`; no invented building.
+- **Political territory is exact** (18-tile bucket grid) and selection is not a per-frame rebuild.
 
 The Stage 3/4 contract also remains: cohorts are the only population representation (D-42); four
 shards with society inside `meta` (D-44); war gate four values (D-47); severe events have a cause or
 `-1`; player causes use `-2`; camera cannot affect history; `captureWorld()` has no `await`; recovery
 repoints and deletes the damaged generation; marker geometry is unit-tested.
 
-Invariants established by the hardening pass — do not "simplify" them away:
+Invariants from the hardening pass — do not "simplify" them away:
 
 - `captureWorld()` contains no `await`; a save is one synchronous snapshot (D-37).
-- A generation is valid only with the complete shard set (D-36), and recovery repoints and deletes the
-  damaged generation (D-38).
-- The RNG streams are captured where generation left them (D-33); the golden fixture pins grid content,
-  not the checksum (D-34).
+- A generation is valid only with the complete shard set (D-36), and recovery repoints and deletes
+  the damaged generation (D-38).
+- The RNG streams are captured where generation left them (D-33); the golden fixture pins grid
+  content, not the checksum (D-34).
 - Marker geometry lives in `render/markerGeometry.ts` and is unit-tested (D-39).
