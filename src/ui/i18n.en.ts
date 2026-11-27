@@ -2,5 +2,6 @@
 import { EN_CORE } from './i18n.en.core.ts';
 import { EN_EXTRA } from './i18n.en.extra.ts';
 import { EN_EVENTS } from './i18n.en.events.ts';
+import { EN_CAMPAIGN } from './i18n.en.campaign.ts';
 
-export const EN: Record<string, string> = { ...EN_CORE, ...EN_EXTRA, ...EN_EVENTS };
+export const EN: Record<string, string> = { ...EN_CORE, ...EN_EXTRA, ...EN_EVENTS, ...EN_CAMPAIGN };

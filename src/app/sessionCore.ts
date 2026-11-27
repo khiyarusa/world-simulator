@@ -17,6 +17,7 @@ import { Labels, type LabelItem } from '../ui/labels.ts';
 import { WorkerClient, type ClientHandlers, type PreviewPayload, type TickStatsMsg } from '../worker/client.ts';
 import type { EcologyMetric, LayerKind, MirrorDelta, SettlementMetaMsg, Speed, WorldMetaMsg } from '../worker/protocol.ts';
 import type { Shell, WorldSummary } from '../ui/shell.ts';
+import type { CampaignSummary } from '../worker/protocol.ts';
 import type { LayerData, SettlementView } from '../worker/queries.ts';
 import { fmtCompact, tierLabel } from '../ui/i18n.ts';
 import { FrameTimer, isDebugEnabled } from './debug.ts';
@@ -80,6 +81,9 @@ export abstract class SessionCore implements ClientHandlers {
     this.renderer.setLowPower(this.prefs.lowPower);
   }
 
+  /** Session hooks for campaign queries; the core owns no campaign reads. */
+  protected onCampaignMeta(_summary: CampaignSummary | undefined): void {}
+
   // ------------------------------------------------------------------ worker events
 
   onReady(): void {
@@ -95,7 +99,9 @@ export abstract class SessionCore implements ClientHandlers {
     this.lastDay = meta.day;
     this.population = sumInt32(meta.settlements.pop);
     this.shell.setDate(meta.day);
+    this.shell.setCampaignSummary(meta.campaign);
     this.maybeMount();
+    this.onCampaignMeta(meta.campaign);
   }
 
   onTerrain(width: number, height: number, grids: TerrainArrays): void {
@@ -123,7 +129,7 @@ export abstract class SessionCore implements ClientHandlers {
       const bakeStart = performance.now();
       const baked = bakeTerrain(terrain.grids, terrain.width, terrain.height, meta.seaLevel);
       this.lastBakeMs = Math.round(performance.now() - bakeStart);
-      this.renderer.mountWorld(meta, baked);
+      this.renderer.mountWorld(meta, baked, terrain.grids);
       this.buildLabels();
       this.shell.showWorld(this.summary());
       this.shell.setSpeed(0);

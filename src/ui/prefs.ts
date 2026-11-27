@@ -6,12 +6,15 @@
 export type TextScale = 1 | 1.25 | 1.5 | 1.75 | 2;
 export type MotionPref = 'auto' | 'reduced';
 export type HandPref = 'right' | 'left';
+export type QualityPref = 'high' | 'balanced' | 'performance';
 
 export interface UiPrefs {
   readonly textScale: TextScale;
   readonly motion: MotionPref;
   readonly hand: HandPref;
   readonly lowPower: boolean;
+  /** Atlas quality. High uses the 2048 overview and regional chunks. */
+  readonly quality: QualityPref;
   /** Completed onboarding steps, 0..3. */
   readonly onboarding: number;
 }
@@ -23,6 +26,7 @@ export const DEFAULT_PREFS: UiPrefs = {
   motion: 'auto',
   hand: 'right',
   lowPower: false,
+  quality: 'high',
   onboarding: 0,
 };
 
@@ -39,6 +43,7 @@ export function loadPrefs(): UiPrefs {
       motion: parsed.motion === 'reduced' ? 'reduced' : 'auto',
       hand: parsed.hand === 'left' ? 'left' : 'right',
       lowPower: parsed.lowPower === true,
+      quality: parsed.quality === 'balanced' || parsed.quality === 'performance' ? parsed.quality : 'high',
       onboarding: Math.max(0, Math.min(3, Math.floor(Number(parsed.onboarding) || 0))),
     };
   } catch {

@@ -5,23 +5,26 @@
  * The shell renders what it is told. It owns no simulation value; numbers arrive from `Session` or a
  * panel query. Layout is mobile-first and RTL-aware through logical properties in `styles.css`.
  */
-import type { Speed } from '../worker/protocol.ts';
+import type { CampaignCommand, CampaignSummary, Speed } from '../worker/protocol.ts';
+import type { CampaignView } from '../worker/queryCampaign.ts';
 import type { EcologyMetric, LayerKind } from '../worker/protocol.ts';
 import type { WorldDoc } from '../platform/storage.ts';
 import type { PanelApi, PanelTab, SaveState } from './panels.ts';
 import { PanelHost } from './panelsFull.ts';
-import { CreationPanel, defaultCreateInput, type CreateInput } from './creation.ts';
+import { type CreateInput } from './creation.ts';
+import { CreationHost } from './creationHost.ts';
 import { WorldsScreen } from './worlds.ts';
 import { el, empty } from './dom.ts';
 import { icon } from './icons.ts';
-import { fmtNum, lang, localDate, t, type Lang } from './i18n.ts';
+import { fmtNum, localDate, t, type Lang } from './i18n.ts';
 import { renderLegend } from './legend.ts';
 import { applyPrefs, DEFAULT_PREFS, loadPrefs, savePrefs, type UiPrefs } from './prefs.ts';
 import { Sheets } from './sheets.ts';
 import { buildDock } from './dock.ts';
 import { MapChrome } from './mapChrome.ts';
 import { Coach } from './coach.ts';
-
+import { LegacyChrome } from './legacyChrome.ts';
+import { SelectionChip } from './chip.ts';
 export type { CreateInput, PresetId } from './creation.ts';
 export interface ShellHandlers {
   onCreate(input: CreateInput): void;
@@ -40,8 +43,12 @@ export interface ShellHandlers {
   onLanguage(lang: Lang): void;
   onPrefs(prefs: UiPrefs): void;
   onReplayOnboarding(): void;
+  onCampaignOpen(): void;
+  onCampaignClose(): void;
+  onCampaignCommand(command: CampaignCommand): void;
+  onCampaignShowTarget(target: number, kind: number): void;
+  onCampaignOpenCiv(civ: number): void;
 }
-
 export interface WorldSummary {
   readonly name: string;
   readonly seedText: string;
@@ -52,7 +59,6 @@ export interface WorldSummary {
   readonly population: number;
   readonly landFraction: number;
 }
-
 export class Shell {
   readonly labelsHost: HTMLElement;
   private readonly handlers: ShellHandlers;
@@ -65,29 +71,23 @@ export class Shell {
   private readonly dateEl: HTMLElement;
   private readonly saveEl: HTMLElement;
   private readonly speedBtn: HTMLButtonElement;
-  private readonly chip: HTMLDivElement;
-  private readonly chipName: HTMLElement;
-  private readonly chipMeta: HTMLElement;
+  private readonly chip: SelectionChip;
   private readonly sheets: Sheets;
   private readonly chrome: MapChrome;
   private readonly coach: Coach;
+  private readonly legacy: LegacyChrome;
   private prefs: UiPrefs = DEFAULT_PREFS;
   private readonly layerLegend: HTMLDivElement;
-  private readonly creationHost: HTMLDivElement;
-  private creation: CreationPanel | null = null;
-  private creationLang: Lang = 'fa';
-  private lastCreateInput: CreateInput = defaultCreateInput();
+  private readonly creationUi: CreationHost;
   private readonly worlds: WorldsScreen;
   private panels: PanelHost | null = null;
   private currentSpeed: Speed = 0;
   private toastTimer: number | null = null;
   private summary: WorldSummary | null = null;
-  private chipOpen = false;
   private activeLayer: LayerKind = 'terrain';
   private layerMetric: EcologyMetric = 'fertility';
   private lastDay = 1;
   private lastSaveState: SaveState = { savedDay: 0, dirty: false, saving: false };
-
   constructor(handlers: ShellHandlers) {
     this.handlers = handlers;
     this.ui = el('div', { class: 'ui' });
@@ -98,7 +98,6 @@ export class Shell {
     const existingToast = document.getElementById('toast');
     this.toastEl = existingToast ?? el('div', { class: 'toast', id: 'toast', role: 'status', 'aria-live': 'polite' });
     this.labelsHost = document.getElementById('labels') ?? el('div', { class: 'labels' });
-
     this.debugEl = el('div', { class: 'debug', hidden: true });
     this.ui.append(this.debugEl);
 
@@ -117,27 +116,38 @@ export class Shell {
     this.saveEl.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') this.handlers.onSave();
     });
-    this.topbar.append(this.iconButton('settings', t('settings.title'), () => this.openSettingsSheet()));
-    this.topbar.append(this.iconButton('menu', t('nav.menu'), () => this.handlers.onOpenPanel('world')));
+    const settingsBtn = this.iconButton('settings', t('settings.title'), () => this.openSettingsSheet());
+    settingsBtn.id = 'settings-btn';
+    this.topbar.append(settingsBtn);
+    const menuBtn = this.iconButton('menu', t('nav.menu'), () => this.handlers.onOpenPanel('world'));
+    menuBtn.id = 'menu-btn';
+    this.topbar.append(menuBtn);
     this.ui.append(this.topbar);
+
+    this.legacy = new LegacyChrome({
+      onOpen: () => this.handlers.onCampaignOpen(),
+      onClose: () => this.handlers.onCampaignClose(),
+      onCommand: (command) => this.handlers.onCampaignCommand(command),
+      onShowTarget: (target, kind) => this.handlers.onCampaignShowTarget(target, kind),
+      onOpenCiv: (civ) => this.handlers.onCampaignOpenCiv(civ),
+    });
+    this.topbar.insertBefore(this.legacy.button, this.topbar.querySelector('#settings-btn'));
+    this.ui.append(this.legacy.strip, this.legacy.board.root);
 
     this.chrome = new MapChrome(this.ui);
     this.ui.append(buildDock(() => this.openLayerSheet(), () => this.handlers.onOpenPanel('world')));
 
-    this.chip = el('div', { class: 'chip', hidden: true });
-    this.chipName = el('span', { class: 'name' });
-    this.chipMeta = el('span', { class: 'meta' });
-    this.chip.append(this.chipName, this.chipMeta);
-    this.chip.addEventListener('click', () => this.handlers.onChipTap());
-    this.ui.append(this.chip);
+    this.chip = new SelectionChip(() => this.handlers.onChipTap());
+    this.ui.append(this.chip.root);
 
     this.layerLegend = el('div', { class: 'legend', hidden: true });
     this.ui.append(this.layerLegend);
 
     if (!existingToast) this.ui.append(this.toastEl);
 
-    this.creationHost = el('div');
-    this.ui.append(this.creationHost);
+    const creationHost = el('div');
+    this.ui.append(creationHost);
+    this.creationUi = new CreationHost(creationHost, handlers, () => this.hideCreation());
 
     this.worlds = new WorldsScreen({
       onOpen: (id) => this.handlers.onWorldsOpen(id),
@@ -219,30 +229,8 @@ export class Shell {
     return this.labelsHost;
   }
 
-  private ensureCreation(): CreationPanel {
-    const current = lang();
-    if (!this.creation || this.creationLang !== current) {
-      if (this.creation) this.creation.hide();
-      this.creationHost.replaceChildren();
-      this.creationLang = current;
-      this.creation = new CreationPanel(
-        {
-          onCreate: (input) => {
-            this.lastCreateInput = input;
-            this.handlers.onCreate(input);
-          },
-          onPreviewRequest: (input) => this.handlers.onPreviewRequest(input),
-          onBack: () => this.hideCreation(),
-        },
-        this.lastCreateInput,
-      );
-      this.creationHost.append(this.creation.root);
-    }
-    return this.creation;
-  }
-
   showWorlds(docs: readonly WorldDoc[]): void {
-    this.creation?.hide();
+    this.creationUi.hidePanelOnly();
     this.worlds.show(docs);
     this.topbar.classList.add('hidden');
     this.hideChip();
@@ -257,20 +245,20 @@ export class Shell {
 
   showCreation(prefill?: Partial<CreateInput>): void {
     this.worlds.hide();
-    this.ensureCreation().show(prefill);
+    this.creationUi.show(prefill);
     this.topbar.classList.add('hidden');
     this.layerLegend.hidden = true;
   }
 
   hideCreation(): void {
-    this.creation?.hide();
+    this.creationUi.hide();
     this.handlers.onBackToWorlds();
   }
 
   showWorld(summary: WorldSummary): void {
     this.summary = summary;
     this.worldNameEl.textContent = summary.name;
-    this.creation?.hide();
+    this.creationUi.hidePanelOnly();
     this.worlds.hide();
     this.topbar.classList.remove('hidden');
     this.attachVisible(true);
@@ -287,7 +275,7 @@ export class Shell {
   }
 
   setProgress(pct: number): void {
-    this.creation?.setProgress(pct);
+    this.creationUi.setProgress(pct);
   }
 
   setSummary(summary: WorldSummary): void {
@@ -323,24 +311,20 @@ export class Shell {
   }
 
   get currentInput(): CreateInput {
-    return this.creation?.currentInput ?? { ...this.lastCreateInput };
+    return this.creationUi.currentInput;
   }
 
 
   showChip(name: string, meta: string): void {
-    this.chipName.textContent = name;
-    this.chipMeta.textContent = meta;
-    this.chip.hidden = false;
-    this.chipOpen = true;
+    this.chip.show(name, meta);
   }
 
   hideChip(): void {
-    this.chip.hidden = true;
-    this.chipOpen = false;
+    this.chip.hide();
   }
 
   get chipVisible(): boolean {
-    return this.chipOpen;
+    return this.chip.visible;
   }
 
 
@@ -354,7 +338,7 @@ export class Shell {
 
   setActiveLayer(layer: LayerKind): void {
     this.activeLayer = layer;
-    this.chip.classList.toggle('with-legend', layer !== 'terrain');
+    this.chip.root.classList.toggle('with-legend', layer !== 'terrain');
     renderLegend(this.layerLegend, layer, this.layerMetric);
   }
 
@@ -393,6 +377,31 @@ export class Shell {
   startOnboarding(): void {
     this.coach.start();
   }
+
+  setCampaignSummary(summary: CampaignSummary | undefined): void {
+    this.legacy.setSummary(summary);
+  }
+
+  setCampaignView(view: CampaignView | null): void {
+    this.legacy.setView(view);
+  }
+
+  openCampaign(): void {
+    this.legacy.open();
+  }
+
+  closeCampaign(): void {
+    this.legacy.close();
+  }
+
+  setCampaignBusy(busy: boolean): void {
+    this.legacy.setBusy(busy);
+  }
+
+  get campaignOpen(): boolean {
+    return this.legacy.isOpen;
+  }
+
 
   notifyInteraction(kind: 'settlement' | 'layer' | 'panel'): void {
     this.coach.notify(kind);
@@ -449,15 +458,6 @@ export class Shell {
     this.setDate(this.lastDay);
     this.setSaveState(this.lastSaveState);
     this.panels?.relabel();
-    // the creation screen is rebuilt on its next open in the active language
-    if (this.creation && this.creationLang !== lang()) {
-      const open = this.creation.isOpen;
-      const input = this.creation.currentInput;
-      this.lastCreateInput = input;
-      this.creation.hide();
-      this.creation = null;
-      if (open) this.showCreation(input);
-    }
   }
 
 
@@ -481,11 +481,11 @@ export class Shell {
   }
 
   drawPreview(width: number, height: number, biome: Uint8Array, elevation: Int16Array): void {
-    this.creation?.drawPreview(width, height, biome, elevation);
+    this.creationUi.drawPreview(width, height, biome, elevation);
   }
 
   showPreview(): void {
-    this.creation?.showPreview();
+    this.creationUi.showPreview();
   }
 
   showCreationError(message: string): void {

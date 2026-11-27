@@ -160,7 +160,7 @@ test('captures the living atlas across fresh, mature, conflict and stress scenar
 
   // Settings + large text.
   await page.evaluate(() => window.__ws?.setLayer('terrain'));
-  await page.locator('.topbar .icon-btn').first().click();
+  await page.locator('#settings-btn').click();
   await expect(page.locator('.sheet.open')).toBeVisible();
   await page.waitForTimeout(350);
   await shot(page, '23-settings');
@@ -173,7 +173,7 @@ test('captures the living atlas across fresh, mature, conflict and stress scenar
   await shot(page, '24-large-text-200');
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
-  await page.locator('.topbar .icon-btn').first().click();
+  await page.locator('#settings-btn').click();
   await page.locator('.settings .seg').nth(1).getByRole('button').first().click();
   await closeSheet(page);
   await closePanel(page);
@@ -192,7 +192,7 @@ test('captures the living atlas across fresh, mature, conflict and stress scenar
   await page.setViewportSize({ width: 390, height: 844 });
 
   // English LTR.
-  await page.locator('.topbar .icon-btn').first().click();
+  await page.locator('#settings-btn').click();
   await page.locator('.settings .seg').first().getByRole('button').nth(1).click();
   await closeSheet(page);
   await page.evaluate(() => window.__ws?.openPanel('world'));

@@ -2,5 +2,6 @@
 import { FA_CORE } from './i18n.fa.core.ts';
 import { FA_EXTRA } from './i18n.fa.extra.ts';
 import { FA_EVENTS } from './i18n.fa.events.ts';
+import { FA_CAMPAIGN } from './i18n.fa.campaign.ts';
 
-export const FA: Record<string, string> = { ...FA_CORE, ...FA_EXTRA, ...FA_EVENTS };
+export const FA: Record<string, string> = { ...FA_CORE, ...FA_EXTRA, ...FA_EVENTS, ...FA_CAMPAIGN };

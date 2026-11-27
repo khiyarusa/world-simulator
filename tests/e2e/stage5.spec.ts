@@ -30,7 +30,7 @@ test('first-run coach marks advance by doing the action and remain dismissible',
 test('settings persist text size, motion, handedness and low power without touching the save schema', async ({ page }) => {
   await create(page);
   await page.locator('.coach').getByRole('button', { name: 'Skip' }).click();
-  await page.locator('.topbar .icon-btn').first().click();
+  await page.locator('#settings-btn').click();
   await expect(page.locator('.settings')).toBeVisible();
   await page.locator('.settings .seg').nth(1).getByRole('button').last().click(); // 200 %
   await page.locator('.settings .seg').nth(2).getByRole('button').last().click(); // reduced motion
@@ -49,7 +49,7 @@ test('large text at 320 dp does not create horizontal overflow', async ({ page }
   await create(page);
   await page.locator('.coach').getByRole('button', { name: 'Skip' }).click();
   await page.setViewportSize({ width: 320, height: 720 });
-  await page.locator('.topbar .icon-btn').first().click();
+  await page.locator('#settings-btn').click();
   await page.locator('.settings .seg').nth(1).getByRole('button').last().click();
   await page.evaluate(() => {
     const close = [...document.querySelectorAll('.sheet.open .sheet-body button')].find((b) => /Close/.test(b.textContent ?? ''));

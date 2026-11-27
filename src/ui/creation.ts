@@ -19,6 +19,8 @@ export interface CreateInput {
   water: number;
   harshness: number;
   peoples: number;
+  /** 0 = Free Sandbox; 1..5 = stewardship legacy. */
+  campaignLegacy: number;
 }
 
 export interface CreationHandlers {
@@ -35,7 +37,7 @@ export function randomSeedText(): string {
 }
 
 export function defaultCreateInput(): CreateInput {
-  return { name: '', seedText: randomSeedText(), preset: 'medium', water: 50, harshness: 50, peoples: 6 };
+  return { name: '', seedText: randomSeedText(), preset: 'medium', water: 50, harshness: 50, peoples: 6, campaignLegacy: 0 };
 }
 
 export class CreationPanel {
@@ -47,6 +49,7 @@ export class CreationPanel {
   private readonly previewPlaceholder: HTMLElement;
   private readonly summary: HTMLElement;
   private input: CreateInput;
+  private legacyField: HTMLElement | null = null;
   private wired = false;
 
   constructor(handlers: CreationHandlers, initial: CreateInput) {
@@ -85,6 +88,38 @@ export class CreationPanel {
     seedRow.append(seedInput, random);
     seedField.append(seedRow, el('span', { class: 'hint', text: t('create.seedHint') }));
     this.root.append(seedField);
+
+    const modeField = el('div', { class: 'field' });
+    modeField.append(el('span', { class: 'field-label', text: t('create.mode') }));
+    const modes = el('div', { class: 'mode-choice' });
+    const campaign = button(t('create.campaign'), () => {
+      this.input.campaignLegacy = this.input.campaignLegacy || 1;
+      this.sync();
+    });
+    campaign.classList.add('mode-card');
+    campaign.dataset.mode = 'campaign';
+    const sandbox = button(t('create.sandbox'), () => {
+      this.input.campaignLegacy = 0;
+      this.sync();
+    });
+    sandbox.classList.add('mode-card');
+    sandbox.dataset.mode = 'sandbox';
+    modes.append(campaign, sandbox);
+    modeField.append(modes);
+
+    const legacyField = el('div', { class: 'field' });
+    legacyField.append(el('span', { class: 'field-label', text: t('create.legacy') }));
+    const legacy = el('select', { class: 'input', id: 'create-legacy' });
+    for (const [value, key] of [[1, 'haven'], [2, 'concord'], [3, 'prosperity'], [4, 'enlightenment'], [5, 'renewal']] as const) {
+      legacy.append(el('option', { value, text: t(`legacy.${key}`) }));
+    }
+    legacy.value = String(this.input.campaignLegacy || 1);
+    legacy.addEventListener('change', () => {
+      this.input.campaignLegacy = Number(legacy.value);
+    });
+    legacyField.append(legacy, el('span', { class: 'hint', text: t('create.legacyHint') }));
+    this.root.append(modeField, legacyField);
+    this.legacyField = legacyField;
 
     const sizeField = el('div', { class: 'field' });
     sizeField.append(el('span', { class: 'field-label', text: t('create.size') }));
@@ -213,6 +248,12 @@ export class CreationPanel {
         b.classList.toggle('accent', preset === this.input.preset);
       }
     }
+    for (const b of this.root.querySelectorAll<HTMLButtonElement>('.mode-card')) {
+      b.classList.toggle('accent', (b.dataset.mode === 'campaign') === (this.input.campaignLegacy !== 0));
+    }
+    if (this.legacyField) this.legacyField.hidden = this.input.campaignLegacy === 0;
+    const legacy = this.root.querySelector<HTMLSelectElement>('#create-legacy');
+    if (legacy && this.input.campaignLegacy !== 0) legacy.value = String(this.input.campaignLegacy);
     for (const key of ['water', 'harshness', 'peoples'] as const) {
       const wrap = this.root.querySelector<HTMLElement>(`[data-field="${key}"]`);
       if (!wrap) continue;

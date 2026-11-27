@@ -8,6 +8,8 @@ import type { EcologyMetric, HistoryFilter, LayerKind, PlayerCommand } from '../
 import type { CommandResult } from '../worker/client.ts';
 import type { EventDetail, HistoryPage, LayerData, WorldView } from '../worker/queries.ts';
 import type { PanelTab } from '../ui/panels.ts';
+import type { CampaignCommand } from '../worker/protocol.ts';
+import type { CampaignView } from '../worker/queryCampaign.ts';
 import type { WorldDoc } from '../platform/storage.ts';
 
 export interface WsTestApi {
@@ -44,6 +46,13 @@ export interface WsTestApi {
   layerProbe(): Record<string, number | string | boolean | null>;
   manageWorlds(): Promise<void>;
   advance(days: number): void;
+  campaign(): Promise<CampaignView>;
+  campaignCommand(command: CampaignCommand): Promise<CommandResult>;
+  openCampaign(): void;
+  focus(id: number, zoom?: number): void;
+  camera(tileX: number, tileY: number, zoom: number): void;
+  detail(): { entries: number; visible: number; zoom: number };
+  detailImage(): string;
 }
 
 declare global {
@@ -81,6 +90,13 @@ export async function boot(): Promise<void> {
       layerProbe: () => session.layerProbe(),
       manageWorlds: () => session.manageWorlds(),
       advance: (days: number) => session.advanceDays(days),
+      campaign: () => session.queryCampaign(),
+      campaignCommand: (command) => session.commandCampaign(command),
+      openCampaign: () => session.openCampaign(),
+      focus: (id, zoom) => session.focusSettlement(id, zoom),
+      camera: (tx, ty, zoom) => session.setCamera(tx, ty, zoom),
+      detail: () => session.detailStats(),
+      detailImage: () => session.detailImage(),
     };
 
     // Release the WebGL context and worker on real navigation/close. `persisted` means bfcache:

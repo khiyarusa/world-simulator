@@ -76,6 +76,18 @@ export function renderSettings(prefs: UiPrefs, currentLang: Lang, handlers: Sett
   power.append(powerSeg, el('p', { class: 'hint', text: t('settings.lowPowerHint') }));
   wrap.append(power);
 
+  const quality = el('div', { class: 'settings-row' });
+  quality.append(el('span', { class: 'settings-label', text: t('settings.quality') }));
+  const qualitySeg = el('div', { class: 'seg wrap' });
+  for (const mode of ['high', 'balanced', 'performance'] as const) {
+    const label = mode === 'high' ? t('settings.qualityHigh') : mode === 'balanced' ? t('settings.qualityBalanced') : t('settings.qualityPerformance');
+    const b = button(label, () => handlers.onPrefs({ ...prefs, quality: mode }), { accent: prefs.quality === mode });
+    b.classList.add('small');
+    qualitySeg.append(b);
+  }
+  quality.append(qualitySeg, el('p', { class: 'hint', text: t('settings.qualityHint') }));
+  wrap.append(quality);
+
   const coach = el('div', { class: 'settings-row' });
   coach.append(el('span', { class: 'settings-label', text: t('settings.onboarding') }));
   coach.append(button(t('settings.replayOnboarding'), () => handlers.onReplayOnboarding(), { accent: true }));

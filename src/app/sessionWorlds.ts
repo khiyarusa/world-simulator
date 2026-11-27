@@ -7,7 +7,7 @@ import { parseSeedText, seedToText } from '../core/seed.ts';
 import { GENERATOR_VERSION } from '../sim/state/worldState.ts';
 import type { WorldRecipe } from '../sim/state/worldState.ts';
 import { DEFAULT_PRESET, PRESETS } from '../sim/world/presets.ts';
-import type { CreateInput, ShellHandlers } from '../ui/shell.ts';
+import type { CreateInput } from '../ui/shell.ts';
 import type { EcologyMetric, LayerKind, Speed } from '../worker/protocol.ts';
 import type { PanelTab } from '../ui/panels.ts';
 import { loadWorld, newWorldDoc, saveWorld } from '../platform/saves.ts';
@@ -19,13 +19,14 @@ import type { SaveState } from '../ui/panels.ts';
 import { applyPrefs, motionReduced, savePrefs, type UiPrefs } from '../ui/prefs.ts';
 import { SessionCore } from './sessionCore.ts';
 
-export class SessionWorlds extends SessionCore implements ShellHandlers {
+export class SessionWorlds extends SessionCore {
   onPrefs(prefs: UiPrefs): void {
     this.prefs = prefs;
     applyPrefs(prefs);
     savePrefs(prefs);
     this.renderer.setLowPower(prefs.lowPower);
     this.renderer.setReducedMotion(motionReduced(prefs));
+    this.renderer.setQuality(prefs.quality);
     this.shell.setPrefs(prefs);
   }
 
@@ -189,7 +190,7 @@ export class SessionWorlds extends SessionCore implements ShellHandlers {
     this.lastDay = 1;
     this.lastSavedDay = 0;
     this.shell.setProgress(2);
-    this.client.create(recipe);
+    this.client.create(recipe, input.campaignLegacy ? { legacy: input.campaignLegacy } : undefined);
   }
 
   async onPreviewRequest(input: CreateInput): Promise<void> {
@@ -276,6 +277,8 @@ export class SessionWorlds extends SessionCore implements ShellHandlers {
   }
 
   async onBackToWorlds(): Promise<void> {
+    this.shell.closeCampaign();
+    this.shell.setCampaignSummary(undefined);
     this.pauseSimulation();
     await this.refreshWorlds(true);
   }

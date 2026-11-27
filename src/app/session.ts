@@ -3,17 +3,20 @@
  * management live in the two base classes; this file only exposes them to the UI and tests.
  */
 import type { CommandResult } from '../worker/client.ts';
+import type { CampaignCommand, CampaignSummary } from '../worker/protocol.ts';
+import type { CampaignView } from '../worker/queryCampaign.ts';
 import type { EcologyMetric, HistoryFilter, LayerKind, PlayerCommand } from '../worker/protocol.ts';
 import type { PanelApi, PanelTab } from '../ui/panels.ts';
 import type { ChroniclePage, CivSummary, CivView, EconomyView, EcologyView, EventDetail, HistoryPage, InterventionInfo, LayerData, SettlementSummary, SettlementView, WorldView } from '../worker/queries.ts';
 import { SessionWorlds } from './sessionWorlds.ts';
 import { Shell } from '../ui/shell.ts';
-import { Renderer, TILE_PX } from '../render/app.ts';
+import { Renderer, TILE_PX, type CampaignMarks } from '../render/app.ts';
 import type { WorldDoc } from '../platform/storage.ts';
 import { initLang, t, type Lang } from '../ui/i18n.ts';
 
 export class Session extends SessionWorlds implements PanelApi {
   private disposed = false;
+  private lastCampaignDay = -1;
 
   constructor(shell: Shell, renderer: Renderer) {
     super(shell, renderer);
@@ -21,6 +24,10 @@ export class Session extends SessionWorlds implements PanelApi {
     if (this.debugEnabled) window.setInterval(() => this.renderDebug(), 500);
     window.setInterval(() => void this.autosave(), 60_000);
     window.setInterval(() => {
+      if (this.shell.campaignOpen && this.lastDay !== this.lastCampaignDay) {
+        this.lastCampaignDay = this.lastDay;
+        void this.refreshCampaign();
+      }
       if (this.speed !== 0 && this.shell.panelsOpen && this.lastDay !== this.lastPanelDay) {
         const now = Date.now();
         if (now - this.panelRefreshAt > 4_000) {
@@ -52,6 +59,11 @@ export class Session extends SessionWorlds implements PanelApi {
       onLanguage: (lang) => ref.session?.onLanguage(lang),
       onPrefs: (prefs) => ref.session?.onPrefs(prefs),
       onReplayOnboarding: () => ref.session?.onReplayOnboarding(),
+      onCampaignOpen: () => ref.session?.openCampaign(),
+      onCampaignClose: () => shell.closeCampaign(),
+      onCampaignCommand: (command) => void ref.session?.campaignCommand(command),
+      onCampaignShowTarget: (target, kind) => ref.session?.showCampaignTarget(target, kind),
+      onCampaignOpenCiv: (civ) => ref.session?.openCampaignCiv(civ),
     });
     const renderer = await Renderer.create(host, {
       onTap: (p) => void ref.session?.handleTap(p.x / TILE_PX, p.y / TILE_PX),
@@ -66,6 +78,88 @@ export class Session extends SessionWorlds implements PanelApi {
   }
 
   // ------------------------------------------------------------------ PanelApi
+
+  async queryCampaign(): Promise<CampaignView> {
+    return this.client.query<CampaignView>({ kind: 'campaign' });
+  }
+
+  async refreshCampaign(open = false): Promise<void> {
+    try {
+      const view = await this.queryCampaign();
+      this.shell.setCampaignView(view);
+      this.renderer.setCampaignMarks(this.campaignMarksOf(view));
+      if (open) this.shell.openCampaign();
+    } catch {
+      // A world switch during the query is not a player-facing error; the next tick retries.
+    }
+  }
+
+  async campaignCommand(command: CampaignCommand): Promise<void> {
+    await this.commandCampaign(command);
+  }
+
+  async commandCampaign(command: CampaignCommand): Promise<CommandResult> {
+    this.shell.setCampaignBusy(true);
+    try {
+      const result = await this.client.campaign(command);
+      if (!result.ok) {
+        this.shell.toast(`${result.code}: ${result.message}`);
+        return result;
+      }
+      this.shell.toast(t(`campaign.${command.op}.done`));
+      await this.refreshCampaign(true);
+      return result;
+    } finally {
+      this.shell.setCampaignBusy(false);
+    }
+  }
+
+  override onCampaignMeta(summary: CampaignSummary | undefined): void {
+    if (summary?.mode === 1) void this.refreshCampaign(summary.targetCiv === 255);
+    else {
+      this.shell.setCampaignSummary(undefined);
+      this.renderer.setCampaignMarks(null);
+    }
+  }
+
+  private campaignMarksOf(view: CampaignView): CampaignMarks | null {
+    const meta = this.meta;
+    if (!meta || view.mode !== 1 || view.targetCiv === 255) return null;
+    const at = (settlement: number): { x: number; y: number } => ({
+      x: meta.settlements.x[settlement] ?? 0,
+      y: meta.settlements.y[settlement] ?? 0,
+    });
+    const capital = (civ: number): { x: number; y: number } => at(meta.civs.capital[civ] ?? 0);
+    const objectives = view.objectives
+      .filter((o) => o.state === 1 || o.state === 2)
+      .slice(0, 4)
+      .map((o) => {
+        const settlement = o.kind === 2 || o.kind === 3 ? meta.civs.capital[o.target] ?? 0 : o.kind === 5 ? meta.civs.capital[view.targetCiv] ?? 0 : o.target;
+        return { ...at(settlement), kind: o.kind };
+      });
+    const charters = view.charters.map((c) => ({ ...capital(c.civ), civ: c.civ }));
+    return { steward: capital(view.targetCiv), objectives, charters };
+  }
+
+  openCampaign(): void {
+    void this.refreshCampaign(true);
+  }
+
+  closeCampaign(): void {
+    this.shell.closeCampaign();
+  }
+
+  openCampaignCiv(civ: number): void {
+    this.shell.closeCampaign();
+    this.selectCiv(civ);
+  }
+
+  showCampaignTarget(target: number, kind: number): void {
+    this.shell.closeCampaign();
+    if (kind === 2 || kind === 3) this.selectCiv(target);
+    else if (kind === 5) this.selectCiv(this.meta?.campaign?.targetCiv ?? target);
+    else this.focusSettlement(target);
+  }
 
   async queryWorld(): Promise<WorldView> {
     return this.client.query<WorldView>({ kind: 'world' });
@@ -127,10 +221,22 @@ export class Session extends SessionWorlds implements PanelApi {
     this.renderer.destroy();
   }
 
-  focusSettlement(id: number): void {
+  setCamera(tileX: number, tileY: number, zoom: number): void {
+    this.renderer.setCamera(tileX, tileY, zoom);
+  }
+
+  detailStats(): { entries: number; visible: number; zoom: number } {
+    return this.renderer.detailStats();
+  }
+
+  detailImage(): string {
+    return this.renderer.detailImage();
+  }
+
+  focusSettlement(id: number, zoom?: number): void {
     const meta = this.meta;
     if (!meta || id < 0 || id >= meta.settlements.x.length) return;
-    this.renderer.flyTo(meta.settlements.x[id] ?? 0, meta.settlements.y[id] ?? 0);
+    this.renderer.flyTo(meta.settlements.x[id] ?? 0, meta.settlements.y[id] ?? 0, zoom);
     void this.tapSettlement(id, true);
   }
 
